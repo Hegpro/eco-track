@@ -1,0 +1,13 @@
+{
+  "name": "eco-track",
+  "version": "1.0.0",
+  "description": "Eco-Track: Unified Bot, API, and React Dashboard",
+  "main": "app.py",
+  "scripts": {
+    "dev": "concurrently \"python app.py\" \"python api/main.py\" \"cd web-dashboard && npm run dev\"",
+    "clean": "powershell \"Stop-Process -Name python -Force; Stop-Process -Id (Get-NetTCPConnection -LocalPort 5174).OwningProcess -Force\""
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

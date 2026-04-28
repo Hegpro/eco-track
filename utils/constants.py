@@ -46,9 +46,9 @@ BTN_STATUS = "🔍 Report Status"
 BTN_HELP = "❓ Help"
 
 # Resources & Issues
-RESOURCES = {"water": "💧 Water", "electricity": "⚡ Electricity", "waste": "🗑 Waste"}
+RESOURCES = {"water": "💧 Water", "electricity": "⚡ Electricity", "sewage": "🗑 Waste"}
 ISSUE_TYPES = {
     "water": ["Leak 💧", "Overflow 🌊", "Misuse 🚿", "Other ❓"],
     "electricity": ["Light Left On 💡", "Illegal Usage ⚡", "Overuse 🔌", "Other ❓"],
-    "waste": ["Garbage Pile 🗑", "No Segregation ♻️", "Overflow Bin 🚮", "Other ❓"]
+    "sewage": ["Garbage Pile 🗑", "No Segregation ♻️", "Overflow Bin 🚮", "Other ❓"]
 }

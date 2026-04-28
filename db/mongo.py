@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 class Database:
     def __init__(self):
         try:
-            self.client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=5000)
+            self.client = MongoClient(
+                config.MONGO_URI, 
+                serverSelectionTimeoutMS=5000, 
+                tlsAllowInvalidCertificates=True
+            )
             self.db = self.client[config.DB_NAME]
             # Collections
             self.users = self.db["users"]
@@ -22,6 +26,7 @@ class Database:
             # Check connection
             self.client.server_info()
         except Exception as e:
+            print(f"DATABASE CONNECTION ERROR: {e}")
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise DatabaseError(f"Database connection failed: {e}")
 
@@ -106,9 +111,4 @@ class Database:
         )
 
 # Global database instance
-try:
-    db = Database()
-except DatabaseError:
-    # Allow import but database operations will fail gracefully later
-    db = None
-    logger.warning("Database initialized in disconnected state.")
+db = Database()

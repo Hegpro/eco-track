@@ -1,29 +1,38 @@
 import subprocess
 import time
 import sys
+import os
 
 def run_bot():
-    print("🚀 Starting Telegram Bot...")
+    print("[Bot] Starting Telegram Service...")
     return subprocess.Popen([sys.executable, "app.py"])
 
-def run_dashboard():
-    print("📊 Starting Admin Dashboard (http://localhost:8000)...")
-    return subprocess.Popen([sys.executable, "dashboard/main.py"])
+def run_api():
+    print("[API] Starting Backend Services (http://localhost:8000)...")
+    return subprocess.Popen([sys.executable, "api/main.py"])
+
+def run_react():
+    print("[UI] Starting React Dashboard (http://localhost:5174)...")
+    # Using shell=True for npm on Windows
+    return subprocess.Popen(["npm", "run", "dev"], cwd="web-dashboard", shell=True)
 
 if __name__ == "__main__":
-    bot_proc = run_bot()
-    dash_proc = run_dashboard()
+    processes = {
+        "bot": run_bot(),
+        "api": run_api(),
+        "ui": run_react()
+    }
     
     try:
         while True:
-            time.sleep(1)
-            if bot_proc.poll() is not None:
-                print("⚠️ Bot process died. Restarting...")
-                bot_proc = run_bot()
-            if dash_proc.poll() is not None:
-                print("⚠️ Dashboard process died. Restarting...")
-                dash_proc = run_dashboard()
+            time.sleep(2)
+            for name, proc in processes.items():
+                if proc.poll() is not None:
+                    print(f"WARN: {name.upper()} process died. Restarting...")
+                    if name == "bot": processes[name] = run_bot()
+                    if name == "api": processes[name] = run_api()
+                    if name == "ui": processes[name] = run_react()
     except KeyboardInterrupt:
-        print("\n🛑 Stopping services...")
-        bot_proc.terminate()
-        dash_proc.terminate()
+        print("\nShutting down Eco-Track Ecosystem...")
+        for proc in processes.values():
+            proc.terminate()
