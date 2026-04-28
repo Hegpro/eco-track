@@ -3,68 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eco-Track Admin Dashboard</title>
+    <title>Eco-Track | Central Panel</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="brand">
-                <h1>Eco-Track Admin</h1>
-                <p style="color: var(--text-muted); font-size: 0.875rem;">Real-time resource management</p>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">🌿 Eco-Track <span>Central</span></div>
+            <div class="nav-links">
+                <a href="#" class="active">Incident Feed</a>
+                <a href="#">Depts</a>
+                <a href="#">Analysis</a>
             </div>
-            <div class="user-profile">
-                <span class="badge badge-success">Live Status</span>
-            </div>
-        </header>
+        </div>
+    </nav>
 
+    <div class="container">
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Total Registered Users</h3>
+                <h3>Total Citizens</h3>
                 <div class="value">{{ total_users }}</div>
             </div>
             <div class="stat-card">
-                <h3>Total Reports Today</h3>
+                <h3>Incident Logs</h3>
                 <div class="value">{{ total_reports }}</div>
             </div>
-            <div class="stat-card">
-                <h3>Active Areas</h3>
-                <div class="value">3</div>
+            <div class="stat-card warning">
+                <h3>Pending Actions</h3>
+                <div class="value">{{ open_reports }}</div>
             </div>
         </div>
 
-        <div class="table-container">
-            <h2>Recent Activity</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Topic</th>
-                        <th>Quantity</th>
-                        <th>Timestamp</th>
-                        <th>Mode</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for report in recent_reports %}
-                    <tr>
-                        <td><code>{{ report.user_id }}</code></td>
-                        <td>{{ report.topic_id }}</td>
-                        <td><strong>{{ report.quantity }}</strong></td>
-                        <td>{{ report.timestamp }}</td>
-                        <td><span class="badge badge-info">{{ report.input_mode }}</span></td>
-                    </tr>
-                    {% endfor %}
-                    {% if not recent_reports %}
-                    <tr>
-                        <td colspan="5" style="text-align: center; padding: 3rem; color: var(--text-muted);">No reports found in the system.</td>
-                    </tr>
+        <div class="section-header">
+            <h2>Live Incident Feed</h2>
+            <div class="filters">
+                <button class="btn-filter active">All Depts</button>
+                <button class="btn-filter">Electrical</button>
+                <button class="btn-filter">Water</button>
+                <button class="btn-filter">Sewage</button>
+            </div>
+        </div>
+
+        <div class="reports-grid">
+            {% for report in recent_reports %}
+            <div class="report-card {{ report.intensity_class | default('general') }}">
+                <div class="card-header">
+                    <span class="topic">{{ report.display_dept | default('Incident') }}</span>
+                    <span class="intensity-badge">{{ report.status | default('Open') }}</span>
+                </div>
+                
+                <div class="card-body">
+                    <div class="location">📍 {{ report.location | default('Unknown Location') }}</div>
+                    <div class="details" style="margin-bottom: 15px; color: var(--secondary);">
+                        🛠 <strong>{{ report.issue_text | default('Incident') }}</strong><br>
+                        ⚡ Impact: {{ report.impact | default(0) }} units
+                    </div>
+                    {% if report.image_id %}
+                    <div class="photo-placeholder">
+                        <span>📸 Evidence Attached</span>
+                    </div>
                     {% endif %}
-                </tbody>
-            </table>
+                </div>
+
+                <div class="card-footer">
+                    <span class="status-pill {{ (report.status | default('open')).lower() }}">{{ report.status | default('Open') }}</span>
+                    <span class="time">{{ report.timestamp | default('Recently') }}</span>
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% if not recent_reports %}
+            <div class="empty-state">
+                <p>No active incidents. The neighborhood is in good hands! 🏡✨</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 

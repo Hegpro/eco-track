@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import config
 from services import admin_service
+from db.mongo import db
 
 def is_admin(user_id):
     return user_id in config.ADMIN_IDS
@@ -13,10 +14,8 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = (
         "🛠 *Admin Menu*\n\n"
-        "/add\_area <name> <pincode>\n"
-        "/add\_topic <name> <unit>\n"
-        "/view\_reports\n"
-        "/send\_nudge <topic_id> <message>"
+        "/add\_staff <tg_id> <name> <dept_id>\n"
+        "(dept_ids: electrical_id, sewage_id, plumbing_id)"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -80,3 +79,44 @@ async def handle_send_nudge(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
             
     await update.message.reply_text(f"✅ Nudge sent to {count} users.")
+
+async def handle_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+    
+    if not context.args:
+        await update.message.reply_text("Usage: /broadcast <message>")
+        return
+        
+    message = " ".join(context.args)
+    users = admin_service.get_users_in_area() # All users
+    
+    count = 0
+    for user in users:
+        try:
+            await context.bot.send_message(
+                chat_id=user["user_id"], 
+                text=f"📢 *GLOBAL ANNOUNCEMENT*\n\n{message}", 
+                parse_mode="Markdown"
+            )
+            count += 1
+        except Exception:
+            pass
+            
+    await update.message.reply_text(f"✅ Broadcast sent to {count} users.")
+
+async def handle_add_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+    if len(context.args) < 3:
+        await update.message.reply_text("Usage: /add_staff <tg_id> <name> <dept_id>")
+        return
+    
+    tg_id = int(context.args[0])
+    name = context.args[1]
+    dept_id = context.args[2]
+    
+    db.add_staff({
+        "user_id": tg_id,
+        "name": name,
+        "dept_id": dept_id
+    })
+    await update.message.reply_text(f"✅ Added {name} as staff for {dept_id}!")

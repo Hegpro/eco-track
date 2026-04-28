@@ -1,73 +1,84 @@
 import logging
-from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ConversationHandler,
-    filters,
+    ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, CallbackQueryHandler
 )
 import config
-from utils.constants import START_REG, IDLE, SELECT_TOPIC, ENTER_QUANTITY, BTN_REPORT, BTN_IMPACT
+from utils.constants import (
+    START_REG, IDLE, SELECT_RESOURCE, SELECT_ISSUE_TYPE, 
+    LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, SELECT_LOCALITY, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
+    CONFIRM_REPORT, SELECT_RESOLVE_ISSUE, CONFIRM_RESOLVE, 
+    VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_LEADERBOARD_MENU, VIEW_MORE,
+    BTN_REPORT, BTN_RESOLVE, BTN_AREA_SCORE, BTN_MY_IMPACT, BTN_LEADERBOARD, BTN_MORE,
+    BTN_BACK, BTN_HOME
+)
 from handlers.user import (
-    start,
-    handle_area_selection,
-    initiate_report,
-    handle_topic_selection,
-    handle_quantity_input,
-    view_impact,
-    cancel,
+    start, handle_area_selection, initiate_report, handle_resource_selection,
+    handle_issue_type_selection, handle_location_menu, handle_pincode_input,
+    handle_landmark_input, handle_locality_selection, handle_loc_confirmation, 
+    handle_manual_location, handle_report_final, initiate_resolve, 
+    handle_resolve_selection, handle_resolve_final,
+    view_score_menu, handle_score_menu_click, view_impact_menu, handle_impact_menu_click,
+    view_leaderboard_menu, handle_leaderboard_menu_click, view_more_menu, handle_more_menu_click, cancel
 )
-from handlers.admin import (
-    admin_menu,
-    handle_add_area,
-    handle_add_topic,
-    handle_view_reports,
-    handle_send_nudge,
-)
+from handlers.admin import admin_menu
+from utils.errors import handle_error
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 def main():
-    # Create the Application
     application = ApplicationBuilder().token(config.BOT_TOKEN).build()
-
-    # Conversation Handler
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
             START_REG: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_area_selection)],
             IDLE: [
                 MessageHandler(filters.Regex(f"^{BTN_REPORT}$"), initiate_report),
-                MessageHandler(filters.Regex(f"^{BTN_IMPACT}$"), view_impact),
-                CommandHandler("start", start), # Allow restarting
+                MessageHandler(filters.Regex(f"^{BTN_RESOLVE}$"), initiate_resolve),
+                MessageHandler(filters.Regex(f"^{BTN_AREA_SCORE}$"), view_score_menu),
+                MessageHandler(filters.Regex(f"^{BTN_MY_IMPACT}$"), view_impact_menu),
+                MessageHandler(filters.Regex(f"^{BTN_LEADERBOARD}$"), view_leaderboard_menu),
+                MessageHandler(filters.Regex(f"^{BTN_MORE}$"), view_more_menu),
+                CommandHandler("start", start),
             ],
-            SELECT_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_topic_selection)],
-            ENTER_QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_quantity_input)],
+            SELECT_RESOURCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_resource_selection)],
+            SELECT_ISSUE_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_issue_type_selection)],
+            LOCATION_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_location_menu)],
+            ENTER_PINCODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pincode_input)],
+            ENTER_LANDMARK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_landmark_input)],
+            SELECT_LOCALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_locality_selection)],
+            CONFIRM_LOC_SAVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_loc_confirmation)],
+            MANUAL_LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_location)],
+            CONFIRM_REPORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_report_final)],
+            SELECT_RESOLVE_ISSUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_resolve_selection)],
+            CONFIRM_RESOLVE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_resolve_final)],
+            VIEW_SCORE_MENU: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_score_menu_click)
+            ],
+            VIEW_IMPACT_MENU: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_impact_menu_click)
+            ],
+            VIEW_LEADERBOARD_MENU: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_leaderboard_menu_click)
+            ],
+            VIEW_MORE: [
+                MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_more_menu_click)
+            ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel), MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start), MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start)],
         allow_reentry=True,
     )
-
     application.add_handler(conv_handler)
-    
-    # Admin Handlers
     application.add_handler(CommandHandler("admin", admin_menu))
-    application.add_handler(CommandHandler("add_area", handle_add_area))
-    application.add_handler(CommandHandler("add_topic", handle_add_topic))
-    application.add_handler(CommandHandler("view_reports", handle_view_reports))
-    application.add_handler(CommandHandler("send_nudge", handle_send_nudge))
-    
-    # Global cancel command
     application.add_handler(CommandHandler("cancel", cancel))
+    
+    # Global Error Handler
+    application.add_error_handler(handle_error)
 
-    # Run the bot
-    print("Eco-Track Bot is starting...")
+    print("Eco-Track Production Bot is starting...")
     application.run_polling()
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()

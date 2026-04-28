@@ -25,6 +25,18 @@
     *   Created a `seed.py` utility for rapid environment setup.
     *   Successfully seeded the `srihack` database with initial service areas and topics.
 
+5.  **Professional City Management (Streamlined)**
+    *   **Intensity-Based Reporting**: Simplified quantity tracking with Low/Medium/High levels.
+    *   **Evidence Collection**: Integrated optional photo uploads for every incident report.
+    *   **Staff Roles**: Implemented a department-based staff system (Water, Electricity, Waste).
+    *   **Direct Resolution**: Staff can browse and resolve department-specific issues directly in Telegram.
+    *   **Advanced Dashboard**: Redesigned central monitoring station with a card-based incident feed and intensity coding.
+
+6.  **Git & DevOps**
+    *   Initialized Git repository with `main` and `dev` branches.
+    *   Implemented secure configuration using `python-dotenv`.
+    *   Created professional documentation (`README.md`, `.env.example`).
+
 ### 🛠 Recent Fixes
 *   **Dashboard SSL**: Resolved MongoDB connection issues by adding `certifi` support.
 *   **Template Error**: Fixed `TypeError: unhashable type: 'dict'` in the dashboard by updating the `TemplateResponse` signature for compatibility with recent FastAPI versions.
