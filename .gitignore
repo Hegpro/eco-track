@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Sensitive data
+.env
+.env.example
+creds.txt
+
+# Dashboard
+dashboard/static/css/*.map
+
+# Logs
+*.log
+seed_error.txt
+seed_log.txt
+
+# Local DB
+data/

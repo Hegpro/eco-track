@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Track Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="brand">
+                <h1>Eco-Track Admin</h1>
+                <p style="color: var(--text-muted); font-size: 0.875rem;">Real-time resource management</p>
+            </div>
+            <div class="user-profile">
+                <span class="badge badge-success">Live Status</span>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Registered Users</h3>
+                <div class="value">{{ total_users }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Reports Today</h3>
+                <div class="value">{{ total_reports }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Active Areas</h3>
+                <div class="value">3</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <h2>Recent Activity</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Topic</th>
+                        <th>Quantity</th>
+                        <th>Timestamp</th>
+                        <th>Mode</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in recent_reports %}
+                    <tr>
+                        <td><code>{{ report.user_id }}</code></td>
+                        <td>{{ report.topic_id }}</td>
+                        <td><strong>{{ report.quantity }}</strong></td>
+                        <td>{{ report.timestamp }}</td>
+                        <td><span class="badge badge-info">{{ report.input_mode }}</span></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not recent_reports %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 3rem; color: var(--text-muted);">No reports found in the system.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
