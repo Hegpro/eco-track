@@ -18,7 +18,9 @@ import {
   Bell,
   ChevronRight,
   ShieldCheck,
-  User
+  User,
+  Map,
+  Shield
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -50,6 +52,9 @@ const App = () => {
   const [stats, setStats] = useState(null);
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [areas, setAreas] = useState([]);
+  const [selectedAreaId, setSelectedAreaId] = useState(null);
+  const [areaStats, setAreaStats] = useState(null);
 
   // Sync selectedDept with current user's department
   useEffect(() => {
@@ -63,25 +68,51 @@ const App = () => {
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      // Use user's locked dept or the manually selected one
       const deptToFilter = currentUser.role === 'admin' ? selectedDept : currentUser.dept;
       
       if (deptToFilter) params.append('dept', deptToFilter.toLowerCase());
       if (selectedStatus) params.append('status', selectedStatus);
       
-      const reportsUrl = `${API_BASE}/reports?${params.toString()}`;
-        
-      const [overviewRes, reportsRes] = await Promise.all([
+      const [overviewRes, reportsRes, areasRes] = await Promise.all([
         axios.get(`${API_BASE}/overview`),
-        axios.get(reportsUrl)
+        axios.get(`${API_BASE}/reports?${params.toString()}`),
+        axios.get(`${API_BASE}/areas`)
       ]);
       setStats(overviewRes.data);
       setReports(reportsRes.data);
+      setAreas(areasRes.data);
+      if (!selectedAreaId && areasRes.data.length > 0) setSelectedAreaId(areasRes.data[0].area_id);
       setLoading(false);
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [selectedDept, selectedStatus, currentUser]);
+  }, [selectedDept, selectedStatus, currentUser, selectedAreaId]);
+
+  const fetchAreaStats = useCallback(async () => {
+    if (!selectedAreaId) return;
+    try {
+      const res = await axios.get(`${API_BASE}/areas/${selectedAreaId}/stats`);
+      setAreaStats(res.data);
+    } catch (err) {
+      console.error("Area stats error:", err);
+    }
+  }, [selectedAreaId]);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  useEffect(() => {
+    fetchAreaStats();
+  }, [fetchAreaStats]);
+
+  const handleIdentityChange = (newIdentity) => {
+    console.log("Switching identity to:", newIdentity.name);
+    setCurrentUser(newIdentity);
+    setShowRolePicker(false);
+  };
 
   const handleResolve = async (reportId) => {
     try {
@@ -93,18 +124,6 @@ const App = () => {
       console.error("Resolve error:", err);
       alert("Failed to resolve report. Please try again.");
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  const handleIdentityChange = (newIdentity) => {
-    console.log("Switching identity to:", newIdentity.name);
-    setCurrentUser(newIdentity);
-    setShowRolePicker(false);
   };
 
   const SidebarItem = ({ id, icon: Icon, label }) => (
@@ -212,6 +231,7 @@ const App = () => {
             <SidebarItem id="overview" icon={LayoutDashboard} label="Dashboard" />
             <SidebarItem id="incidents" icon={AlertCircle} label="Active Alerts" />
             <SidebarItem id="analytics" icon={BarChart3} label="Analytics" />
+            <SidebarItem id="areas" icon={Map} label="City Explorer" />
           </nav>
         </div>
 
@@ -343,7 +363,7 @@ const App = () => {
                       </div>
                       <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={chartData}>
+                          <AreaChart data={stats?.historical_data || []}>
                             <defs>
                               <linearGradient id="colorBrand" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
@@ -460,6 +480,68 @@ const App = () => {
                 </motion.div>
               )}
 
+              {activeTab === 'areas' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold tracking-tight">City Explorer</h2>
+                      <p className="text-slate-400">Public display board for neighborhood insights.</p>
+                    </div>
+                    <select 
+                      value={selectedAreaId || ''} 
+                      onChange={(e) => setSelectedAreaId(e.target.value)}
+                      className="bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold outline-none"
+                    >
+                      {areas.map(area => (
+                        <option key={area.area_id} value={area.area_id}>{area.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <StatCard title="Eco-Score" value={areaStats?.score || 100} icon={Shield} change="+2" active />
+                    <StatCard title="Active Issues" value={areaStats?.pending || 0} icon={AlertCircle} destructive />
+                    <StatCard title="Fixed Locally" value={areaStats?.resolved || 0} icon={CheckCircle2} change="WEEKLY" />
+                    <StatCard title="Resource Saved" value={`${areaStats?.impact || 0}L`} icon={Droplets} change="LIVE" />
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8">
+                      <h3 className="font-bold text-lg mb-6">Local Incident Feed</h3>
+                      <div className="space-y-4">
+                        {reports.filter(r => r.area_id === selectedAreaId).length > 0 ? (
+                          reports.filter(r => r.area_id === selectedAreaId).slice(0, 5).map(report => (
+                            <div key={report._id} className="flex items-center justify-between p-4 bg-slate-800/40 rounded-xl border border-slate-800">
+                              <div className="flex items-center gap-4">
+                                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <div>
+                                  <p className="text-sm font-bold">{report.issue_type}</p>
+                                  <p className="text-[10px] text-slate-500">{report.location}</p>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">{report.status}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-center py-10 text-slate-600 text-sm italic">Everything looks clean in this neighborhood!</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8 flex flex-col items-center justify-center text-center">
+                      <div className="h-32 w-32 rounded-full border-8 border-emerald-500/20 border-t-emerald-500 flex items-center justify-center mb-6">
+                        <span className="text-4xl font-bold">{areaStats?.score || 100}</span>
+                      </div>
+                      <h4 className="text-xl font-bold mb-2">Sustainable Neighborhood</h4>
+                      <p className="text-sm text-slate-400 max-w-xs">This locality is currently in the top 10% for water conservation. Keep it up!</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
               {activeTab === 'analytics' && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.98 }}
@@ -478,7 +560,7 @@ const App = () => {
                       <h3 className="font-bold text-lg mb-8">Resource Consumption Over Time</h3>
                       <div className="h-[400px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={chartData}>
+                          <AreaChart data={stats?.historical_data || []}>
                             <defs>
                               <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
@@ -502,7 +584,7 @@ const App = () => {
                         <h3 className="font-bold text-sm text-slate-400 uppercase tracking-widest mb-6">Efficiency metrics</h3>
                         <div className="space-y-6">
                           <EfficiencyMetric label="Avg. Response Time" value="12m" target="15m" percent={80} />
-                          <EfficiencyMetric label="Resolution Rate" value="94%" target="90%" percent={94} />
+                          <EfficiencyMetric label="Resolution Rate" value={`${stats?.efficiency?.electrical || 0}%`} target="90%" percent={stats?.efficiency?.electrical || 0} />
                           <EfficiencyMetric label="Citizen Satisfaction" value="4.8/5" target="4.5/5" percent={96} />
                         </div>
                       </div>
@@ -654,15 +736,5 @@ const ReportCard = ({ report, onResolve }) => (
     </div>
   </motion.div>
 );
-
-const chartData = [
-  { name: 'MON', value: 4 },
-  { name: 'TUE', value: 7 },
-  { name: 'WED', value: 5 },
-  { name: 'THU', value: 8 },
-  { name: 'FRI', value: 12 },
-  { name: 'SAT', value: 9 },
-  { name: 'SUN', value: 11 },
-];
 
 export default App;

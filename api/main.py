@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import sys
@@ -13,40 +14,67 @@ app = FastAPI(title="Eco-Track API")
 # Enable CORS for React development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"GLOBAL ERROR: {exc}")
+    print(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"message": str(exc), "traceback": traceback.format_exc()},
+    )
+
+from fastapi.responses import JSONResponse
+
 @app.get("/api/overview")
 async def get_overview():
-    total_users = db.users.count_documents({})
-    total_reports = db.reports.count_documents({})
-    open_reports = db.reports.count_documents({"status": "Open"})
-    resolved_reports = db.reports.count_documents({"status": "Resolved"})
-    
-    # Dept-wise pending
-    depts = {
-        "electrical": db.reports.count_documents({"topic_id": "electricity_id", "status": "Open"}),
-        "water": db.reports.count_documents({"topic_id": "water_id", "status": "Open"}),
-        "sewage": db.reports.count_documents({"topic_id": "sewage_id", "status": "Open"})
-    }
+    try:
+        now = datetime.datetime.now()
+        
+        # 7-day historical data
+        historical = []
+        for i in range(7):
+            day = now - datetime.timedelta(days=6-i)
+            start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+            count = db.reports.count_documents({"timestamp": {"$gte": start, "$lte": end}})
+            historical.append({"name": day.strftime("%a").upper(), "value": count})
 
-    return {
-        "stats": {
-            "users": total_users,
-            "total_reports": total_reports,
-            "pending": open_reports,
-            "resolved": resolved_reports
-        },
-        "dept_pending": depts
-    }
+        # Departmental efficiency
+        def get_eff(topic_id):
+            total = db.reports.count_documents({"topic_id": topic_id})
+            resolved = db.reports.count_documents({"topic_id": topic_id, "status": "Resolved"})
+            return round((resolved / total * 100), 1) if total > 0 else 0
+
+        return {
+            "stats": {
+                "users": db.users.count_documents({}),
+                "total_reports": db.reports.count_documents({}),
+                "pending": db.reports.count_documents({"status": "Open"}),
+                "resolved": db.reports.count_documents({"status": "Resolved"}),
+                "eco_score": 84,
+            },
+            "dept_pending": {
+                "electrical": db.reports.count_documents({"topic_id": "electricity_id", "status": "Open"}),
+                "water": db.reports.count_documents({"topic_id": "water_id", "status": "Open"}),
+                "sewage": db.reports.count_documents({"topic_id": "sewage_id", "status": "Open"}),
+            },
+            "efficiency": {
+                "electrical": get_eff("electricity_id"),
+                "water": get_eff("water_id"),
+                "sewage": get_eff("sewage_id"),
+            },
+            "historical_data": historical
+        }
+    except Exception as e:
+        print(f"Overview error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/reports")
 async def get_reports(dept: str = None, status: str = None):
@@ -68,7 +96,7 @@ async def resolve_report(report_id: str, request: Request):
     
     try:
         from bson import ObjectId
-        res = db.db.reports.update_one(
+        res = db.reports.update_one(
             {"_id": ObjectId(report_id)},
             {"$set": {
                 "status": "Resolved",
@@ -87,13 +115,27 @@ async def get_areas():
     areas = list(db.areas.find())
     for a in areas:
         a["_id"] = str(a["_id"])
+        a["name"] = a.get("area_name", "Unknown Area")
     return areas
 
-@app.get("/api/leaderboard")
-async def get_leaderboard_stats():
-    # Simple top 5 areas by score
-    areas = list(db.areas.find().sort("current_score", -1).limit(5))
-    return [{"name": a["area_name"], "score": a.get("current_score", 100)} for a in areas]
+@app.get("/api/areas/{area_id}/stats")
+async def get_area_stats(area_id: str):
+    area = db.areas.find_one({"area_id": area_id})
+    if not area:
+        raise HTTPException(status_code=404, detail="Area not found")
+    
+    pending = db.reports.count_documents({"area_id": area_id, "status": "Open"})
+    resolved = db.reports.count_documents({"area_id": area_id, "status": "Resolved"})
+    
+    score = area.get("current_score", 100)
+    
+    return {
+        "name": area.get("area_name", "Unknown"),
+        "score": score,
+        "pending": pending,
+        "resolved": resolved,
+        "impact": resolved * 200
+    }
 
 if __name__ == "__main__":
     import uvicorn
