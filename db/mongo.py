@@ -136,15 +136,35 @@ class Database:
         )
 
     @safe_execute
+    def get_all_active_areas(self):
+        # Get formal areas
+        areas = {a["area_id"]: a for a in self.areas.find()}
+        
+        # Get areas from reports and users that might not be in formal list
+        active_ids = set(self.db.reports.distinct("area_id") + self.db.users.distinct("area_id"))
+        for aid in active_ids:
+            if aid and aid not in areas:
+                # Try to find area name from latest report
+                latest = self.db.reports.find_one({"area_id": aid}, sort=[("timestamp", -1)])
+                name = latest.get("area_name") if latest else aid
+                areas[aid] = {"area_id": aid, "area_name": name, "current_score": 100}
+        
+        return list(areas.values())
+
+    @safe_execute
     def get_area_score(self, area_id):
         area = self.areas.find_one({"area_id": area_id})
         return area.get("current_score", 100) if area else 100
 
     @safe_execute
-    def update_area_score(self, area_id, score_delta):
+    def update_area_score(self, area_id, score_delta, area_name=None):
+        name = area_name if area_name else area_id
         return self.areas.update_one(
             {"area_id": area_id},
-            {"$inc": {"current_score": score_delta}, "$setOnInsert": {"current_score": 100}},
+            {
+                "$inc": {"current_score": score_delta}, 
+                "$setOnInsert": {"current_score": 100, "is_active": True, "area_name": name}
+            },
             upsert=True
         )
 

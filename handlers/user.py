@@ -235,13 +235,25 @@ async def handle_report_final(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = db.get_user(update.effective_user.id)
     report_data = context.user_data["report"]
     impact_l = 200 if report_data["res_key"] == "water" else 0
-    old_score = calculate_score(user["area_id"])
+    locality = report_data.get("locality")
+    area_id = locality if locality else user["area_id"]
+    area_name = locality if locality else user["area_name"]
+    
+    # Ensure the area exists in the areas collection for the dashboard
+    db.update_area_score(area_id, 0, area_name=area_name) # This will upsert if not exists with score 100
+    
+    old_score = calculate_score(area_id)
     
     # Use the new increment logic
     report_data.update({
-        "user_id": update.effective_user.id, "area_id": user["area_id"],
-        "topic_id": report_data["res_key"] + "_id", "issue_type": report_data["issue_text"],
-        "status": "Open", "timestamp": datetime.datetime.now(), "impact_value": impact_l
+        "user_id": update.effective_user.id, 
+        "area_id": area_id,
+        "area_name": area_name,
+        "topic_id": report_data["res_key"] + "_id", 
+        "issue_type": report_data["issue_text"],
+        "status": "Open", 
+        "timestamp": datetime.datetime.now(), 
+        "impact_value": impact_l
     })
     
     res = db.add_or_increment_report(report_data)
@@ -250,7 +262,7 @@ async def handle_report_final(update: Update, context: ContextTypes.DEFAULT_TYPE
     is_increment = hasattr(res, 'modified_count') and res.modified_count > 0
     
     db.db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"reports_count": 1}})
-    new_score = calculate_score(user["area_id"])
+    new_score = calculate_score(area_id)
     
     if is_increment:
         success_msg = f"♻️ Issue Frequency Increased!\n\nThis issue has been reported multiple times at this location.\nScore: {old_score} → {new_score}"

@@ -1,8 +1,20 @@
-import sys
+from pymongo import MongoClient
 import os
-sys.path.append(os.getcwd())
-from db.mongo import db
+from dotenv import load_dotenv
 
-print("Areas:", list(db.db.areas.find({}, {"_id": 0})))
-print("Topics:", list(db.db.topics.find({}, {"_id": 0})))
-print("Reports:", db.reports.count_documents({}))
+load_dotenv()
+
+client = MongoClient(os.getenv("MONGO_URI", "mongodb://localhost:27017"))
+db = client[os.getenv("DB_NAME", "srihack")]
+
+print("--- AREAS ---")
+for a in db.areas.find():
+    print(a)
+
+print("\n--- USERS (Sample) ---")
+for u in db.users.find().limit(5):
+    print(u)
+
+print("\n--- REPORTS (Sample) ---")
+for r in db.reports.find().limit(5):
+    print(r)

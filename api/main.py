@@ -132,25 +132,29 @@ async def resolve_report(report_id: str, request: Request):
 
 @app.get("/api/areas")
 async def get_areas():
-    areas = list(db.areas.find())
+    areas = db.get_all_active_areas()
     for a in areas:
-        a["_id"] = str(a["_id"])
-        a["name"] = a.get("area_name", "Unknown Area")
+        a["_id"] = str(a.get("_id", ""))
+        a["name"] = a.get("area_name", a.get("area_id", "Unknown Area"))
     return areas
 
 @app.get("/api/areas/{area_id}/stats")
 async def get_area_stats(area_id: str):
     area = db.areas.find_one({"area_id": area_id})
-    if not area:
-        raise HTTPException(status_code=404, detail="Area not found")
     
     pending = db.reports.count_documents({"area_id": area_id, "status": "Open"})
     resolved = db.reports.count_documents({"area_id": area_id, "status": "Resolved"})
     
-    score = area.get("current_score", 100)
+    score = area.get("current_score", 100) if area else 100
+    name = area.get("area_name") if area else None
     
+    if not name:
+        # Try to find name from reports
+        latest = db.reports.find_one({"area_id": area_id}, sort=[("timestamp", -1)])
+        name = latest.get("area_name") if latest else area_id
+
     return {
-        "name": area.get("area_name", "Unknown"),
+        "name": name,
         "score": score,
         "pending": pending,
         "resolved": resolved,
