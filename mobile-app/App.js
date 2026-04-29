@@ -10,7 +10,8 @@ import {
   StatusBar,
   Dimensions,
   SafeAreaView,
-  Platform
+  Platform,
+  Animated
 } from 'react-native';
 import { 
   Droplets, 
@@ -77,8 +78,10 @@ export default function App() {
   const [landmark, setLandmark] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedIssue, setSelectedIssue] = useState(null);
+  const [selectedIssueDetail, setSelectedIssueDetail] = useState(null);
   const [myReports, setMyReports] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [historicalData, setHistoricalData] = useState([]);
   const [currentUser, setCurrentUser] = useState({ id: 12345678, name: 'Eco Citizen', area_id: 'Indiranagar' });
 
   useEffect(() => {
@@ -88,26 +91,17 @@ export default function App() {
   const fetchData = async () => {
     try {
       if (screen === 'home') {
-        const [statsRes, reportsRes] = await Promise.all([
+        const [statsRes, reportsRes, overviewRes] = await Promise.all([
           axios.get(`${API_BASE}/areas/${currentUser.area_id}/stats`).catch(() => ({ data: null })),
-          axios.get(`${API_BASE}/reports`, { params: { user_id: currentUser.id } }).catch(() => ({ data: [] }))
+          axios.get(`${API_BASE}/reports`).catch(() => ({ data: [] })),
+          axios.get(`${API_BASE}/overview`).catch(() => ({ data: null }))
         ]);
         setAreaStats(statsRes.data);
         setMyReports(reportsRes.data);
-      }
-      if (screen === 'leaderboard') {
-        // Mocking for now as per dashboard
-        setLeaderboard([
-          { name: 'Indiranagar', score: 88 },
-          { name: 'Koramangala', score: 82 },
-          { name: 'Whitefield', score: 75 }
-        ]);
+        setHistoricalData(overviewRes.data?.historical_data || []);
       }
     } catch (err) {
       console.log('Fetch error:', err.message);
-      if (err.message === 'Network Error') {
-        alert(`Connection Failed: Make sure your server is running at ${API_BASE}`);
-      }
     }
   };
 
@@ -129,6 +123,29 @@ export default function App() {
     }
   };
 
+  const [successAnim] = useState(new Animated.Value(0));
+
+  const showSuccess = () => {
+    setScreen('success');
+    Animated.spring(successAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+
+    setTimeout(() => {
+      Animated.timing(successAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setScreen('home');
+        resetFlow();
+      });
+    }, 3000);
+  };
+
   const submitReport = async () => {
     setLoading(true);
     try {
@@ -144,11 +161,7 @@ export default function App() {
       
       console.log('Submitting to:', `${API_BASE}/reports/submit`);
       await axios.post(`${API_BASE}/reports/submit`, reportData);
-      setScreen('success');
-      setTimeout(() => {
-        setScreen('home');
-        resetFlow();
-      }, 2000);
+      showSuccess();
     } catch (err) {
       console.log('Report submission error:', err);
       if (err.response) {
@@ -182,6 +195,126 @@ export default function App() {
     </View>
   );
 
+  const [detailAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    if (selectedIssueDetail) {
+      Animated.spring(detailAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(detailAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [selectedIssueDetail]);
+
+  const renderHistory = () => (
+    <View style={styles.mainContent}>
+      <Header title="All Reports" />
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 100 }}>
+        {myReports.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Clock color={COLORS.textSecondary} size={48} />
+            <Text style={styles.emptyText}>No reports found.</Text>
+          </View>
+        ) : (
+          myReports.map((r, i) => (
+            <TouchableOpacity key={i} style={styles.issueListItem} onPress={() => setSelectedIssueDetail(r)}>
+              <View style={[styles.statusIndicator, { backgroundColor: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]} />
+              <View style={styles.issueListInfo}>
+                <Text style={styles.issueListType}>{r.issue_type || 'General Issue'}</Text>
+                <Text style={styles.issueListLoc}>{r.locality || r.area_id}</Text>
+                <Text style={styles.issueListTime}>{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : 'Recent'}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: r.status === 'Resolved' ? COLORS.primary + '15' : COLORS.danger + '15' }]}>
+                <Text style={[styles.statusBadgeText, { color: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]}>
+                  {r.status}
+                </Text>
+              </View>
+              <ChevronRight color={COLORS.cardBorder} size={20} />
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  const renderIssueDetail = () => (
+    <View style={styles.detailOverlay}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedIssueDetail(null)} />
+      <Animated.View style={[
+        styles.detailCard,
+        {
+          transform: [{
+            translateY: detailAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [600, 0]
+            })
+          }]
+        }
+      ]}>
+        <View style={styles.detailHeader}>
+          <Text style={styles.detailTitle}>Issue Details</Text>
+          <TouchableOpacity onPress={() => setSelectedIssueDetail(null)}>
+            <Plus color={COLORS.textSecondary} size={24} style={{ transform: [{ rotate: '45deg' }] }} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.detailContent}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Status</Text>
+              <View style={[styles.statusBadge, { backgroundColor: selectedIssueDetail.status === 'Resolved' ? COLORS.primary + '15' : COLORS.danger + '15' }]}>
+                <Text style={[styles.statusBadgeText, { color: selectedIssueDetail.status === 'Resolved' ? COLORS.primary : COLORS.danger }]}>
+                  {selectedIssueDetail.status}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Resource & Type</Text>
+              <Text style={styles.detailValue}>{selectedIssueDetail.issue_type}</Text>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Location</Text>
+              <Text style={styles.detailValue}>{selectedIssueDetail.location || selectedIssueDetail.locality}</Text>
+            </View>
+
+            {selectedIssueDetail.landmark && (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Landmark</Text>
+                <Text style={styles.detailValue}>{selectedIssueDetail.landmark}</Text>
+              </View>
+            )}
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Reported On</Text>
+              <Text style={styles.detailValue}>{new Date(selectedIssueDetail.timestamp).toLocaleString()}</Text>
+            </View>
+
+            {selectedIssueDetail.resolved_at && (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Resolved On</Text>
+                <Text style={styles.detailValue}>{new Date(selectedIssueDetail.resolved_at).toLocaleString()}</Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.closeDetailBtn} onPress={() => setSelectedIssueDetail(null)}>
+            <Text style={styles.buttonText}>Close</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+
   const BottomNav = () => (
     <View style={styles.bottomNav}>
       <TouchableOpacity style={styles.navItem} onPress={() => setScreen('home')}>
@@ -195,7 +328,7 @@ export default function App() {
       </TouchableOpacity>
       <TouchableOpacity style={styles.navItem} onPress={() => setScreen('history')}>
         <History color={screen === 'history' ? COLORS.primary : COLORS.textSecondary} size={24} />
-        <Text style={[styles.navText, screen === 'history' && { color: COLORS.primary }]}>Impact</Text>
+        <Text style={[styles.navText, screen === 'history' && { color: COLORS.primary }]}>Reports</Text>
       </TouchableOpacity>
     </View>
   );
@@ -211,22 +344,30 @@ export default function App() {
 
         <View style={styles.scoreCard}>
           <View style={styles.scoreTop}>
-            <Text style={styles.scoreArea}>{currentUser.area_id}</Text>
-            <Shield color={COLORS.primary} size={20} />
+            <Text style={styles.scoreArea}>Weekly Activity</Text>
+            <BarChart3 color={COLORS.primary} size={20} />
           </View>
-          <Text style={styles.scoreBig}>{areaStats?.score || 100}</Text>
-          <Text style={styles.scoreDesc}>Eco-Efficiency Score</Text>
-          <View style={styles.scoreBarContainer}>
-            <View style={[styles.scoreBar, { width: `${areaStats?.score || 100}%` }]} />
+          <View style={styles.graphContainer}>
+            {historicalData.map((day, i) => {
+              const maxVal = Math.max(...historicalData.map(d => d.value), 5);
+              const heightPerc = (day.value / maxVal) * 100;
+              return (
+                <View key={i} style={styles.graphBarColumn}>
+                  <View style={styles.graphBarBg}>
+                    <View style={[styles.graphBarFill, { height: `${heightPerc}%` }]} />
+                  </View>
+                  <Text style={styles.graphBarLabel}>{day.name}</Text>
+                </View>
+              );
+            })}
           </View>
+          <Text style={styles.scoreDesc}>System-wide reports (Last 7 days)</Text>
         </View>
 
         <View style={styles.menuGrid}>
           {[
             { label: '📊 Report Issue', screen: 'report', icon: AlertCircle, color: COLORS.danger },
-            { label: '🌿 Area Score', screen: 'home', icon: Shield, color: COLORS.primary },
-            { label: '👤 My Impact', screen: 'history', icon: User, color: COLORS.accent },
-            { label: '⚙️ More', screen: 'more', icon: Settings, color: COLORS.textSecondary },
+            { label: '📋 All Reports', screen: 'history', icon: History, color: COLORS.accent },
           ].map((item, idx) => (
             <TouchableOpacity key={idx} style={styles.menuItem} onPress={() => setScreen(item.screen)}>
               <View style={[styles.menuIconBox, { backgroundColor: item.color + '15' }]}>
@@ -421,24 +562,41 @@ export default function App() {
     </View>
   );
 
+  const renderSuccess = () => (
+    <View style={styles.successOverlay}>
+      <Animated.View style={[
+        styles.successCard,
+        {
+          transform: [
+            { scale: successAnim },
+            { translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }
+          ],
+          opacity: successAnim
+        }
+      ]}>
+        <View style={styles.successIconBox}>
+          <CheckCircle2 color="#fff" size={64} />
+        </View>
+        <Text style={styles.successTitle}>Report Submitted!</Text>
+        <Text style={styles.successSubtitle}>Thank you for being a responsible citizen. We are on it!</Text>
+        <View style={styles.impactBadge}>
+          <Shield color={COLORS.primary} size={16} />
+          <Text style={styles.impactBadgeText}>+200 Impact Points</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
       {screen === 'home' && renderHome()}
       {screen === 'report' && renderReport()}
-      {screen === 'history' && (
-         <View style={styles.mainContent}>
-            <Header title="My Impact" />
-            <ScrollView style={styles.scrollContainer}>
-              {myReports.map((r, i) => (
-                <View key={i} style={styles.typeCard}>
-                  <Text style={styles.typeLabel}>{r.issue_type}</Text>
-                  <Text style={styles.reportStatus}>{r.status}</Text>
-                </View>
-              ))}
-            </ScrollView>
-         </View>
-      )}
+      {screen === 'success' && renderSuccess()}
+      {screen === 'history' && renderHistory()}
+      
+      {selectedIssueDetail && renderIssueDetail()}
+      
       {(screen === 'home' || screen === 'history') && <BottomNav />}
     </SafeAreaView>
   );
@@ -519,10 +677,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderRadius: 3,
   },
-  scoreBar: {
-    height: '100%',
+  graphContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 120,
+    marginVertical: 20,
+  },
+  graphBarColumn: {
+    alignItems: 'center',
+    width: (width - 120) / 7,
+  },
+  graphBarBg: {
+    width: 6,
+    height: 80,
+    backgroundColor: COLORS.background,
+    borderRadius: 3,
+    justifyContent: 'flex-end',
+  },
+  graphBarFill: {
+    width: '100%',
     backgroundColor: COLORS.primary,
     borderRadius: 3,
+  },
+  graphBarLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    marginTop: 8,
+    fontWeight: 'bold',
   },
   menuGrid: {
     flexDirection: 'row',
@@ -722,5 +904,164 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  successCard: {
+    width: width * 0.85,
+    backgroundColor: COLORS.card,
+    borderRadius: 32,
+    padding: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  successIconBox: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successTitle: {
+    color: COLORS.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  successSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  impactBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    marginTop: 16,
+  },
+  issueListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  statusIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 16,
+  },
+  issueListInfo: {
+    flex: 1,
+  },
+  issueListType: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  issueListLoc: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  issueListTime: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  detailOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    justifyContent: 'flex-end',
+    zIndex: 2000,
+  },
+  detailCard: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.cardBorder,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  detailTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  detailContent: {
+    gap: 20,
+    marginBottom: 30,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detailItem: {
+    gap: 4,
+  },
+  detailLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  detailValue: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  closeDetailBtn: {
+    backgroundColor: COLORS.cardBorder,
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
   }
 });
