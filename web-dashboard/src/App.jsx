@@ -23,7 +23,9 @@ import {
   Shield,
   Clock,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  HelpCircle,
+  MessageCircle
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -58,6 +60,8 @@ const App = () => {
   const [stats, setStats] = useState(null);
   const [reports, setReports] = useState([]);
   const [nudges, setNudges] = useState([]);
+  const [supportRequests, setSupportRequests] = useState([]);
+  const [supportTab, setSupportTab] = useState('active');
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [areas, setAreas] = useState([]);
@@ -84,16 +88,18 @@ const App = () => {
       if (activeTab === 'delayed') params.append('delayed', 'true');
       if (searchQuery) params.append('search', searchQuery);
       
-      const [overviewRes, reportsRes, areasRes, nudgesRes] = await Promise.all([
+      const [overviewRes, reportsRes, areasRes, nudgesRes, supportRes] = await Promise.all([
         axios.get(`${API_BASE}/overview`),
         axios.get(`${API_BASE}/reports`, { params }),
         axios.get(`${API_BASE}/areas`),
-        currentUser.dept ? axios.get(`${API_BASE}/nudges`, { params: { dept: currentUser.dept.toLowerCase() } }) : Promise.resolve({ data: [] })
+        currentUser.dept ? axios.get(`${API_BASE}/nudges`, { params: { dept: currentUser.dept.toLowerCase() } }) : Promise.resolve({ data: [] }),
+        currentUser.role === 'admin' ? axios.get(`${API_BASE}/support`) : Promise.resolve({ data: [] })
       ]);
       setStats(overviewRes.data);
       setReports(reportsRes.data);
       setAreas(areasRes.data);
       setNudges(nudgesRes.data);
+      setSupportRequests(supportRes.data || []);
       if (!selectedAreaId && areasRes.data.length > 0) setSelectedAreaId(areasRes.data[0].area_id);
       setLoading(false);
     } catch (err) {
@@ -158,6 +164,19 @@ const App = () => {
       console.error("Nudge error:", err);
       setNotification({ type: 'error', message: 'Failed to send alert. Please try again.' });
       setTimeout(() => setNotification(null), 4000);
+    }
+  };
+
+  const handleResolveSupport = async (reqId) => {
+    try {
+      await axios.post(`${API_BASE}/support/${reqId}/resolve`);
+      setNotification({ type: 'success', message: 'Message marked as resolved.' });
+      setTimeout(() => setNotification(null), 3000);
+      fetchData();
+    } catch (err) {
+      console.error("Resolve support error:", err);
+      setNotification({ type: 'error', message: 'Failed to resolve message.' });
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -286,6 +305,7 @@ const App = () => {
             <SidebarItem id="messages" icon={Bell} label="Alerts" badge={nudges.length > 0 ? nudges.length : null} />
             <SidebarItem id="analytics" icon={BarChart3} label="Analytics" />
             <SidebarItem id="areas" icon={Map} label="City Explorer" />
+            {currentUser.role === 'admin' && <SidebarItem id="help" icon={HelpCircle} label="Help Center" badge={supportRequests.filter(r => r.status === 'Pending').length || null} />}
           </nav>
         </div>
 
@@ -772,6 +792,85 @@ const App = () => {
                         </p>
                       </div>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+              
+              {activeTab === 'help' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Citizen Help Center</h2>
+                    <p className="text-slate-400">Review and respond to messages from citizens.</p>
+                  </div>
+
+                  {/* Help Tabs */}
+                  <div className="flex gap-2 p-1 bg-slate-900 w-fit rounded-xl border border-slate-800">
+                    <button 
+                      onClick={() => setSupportTab('active')}
+                      className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${
+                        supportTab === 'active' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      Active Messages ({supportRequests.filter(r => r.status === 'Pending').length})
+                    </button>
+                    <button 
+                      onClick={() => setSupportTab('resolved')}
+                      className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${
+                        supportTab === 'resolved' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      Resolved
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 max-w-4xl">
+                    {supportRequests
+                      .filter(req => supportTab === 'active' ? req.status === 'Pending' : req.status === 'Resolved')
+                      .map((req) => (
+                      <div key={req._id} className="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 hover:border-emerald-500/30 transition-all group">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 font-bold">
+                              {req.name?.charAt(0) || 'U'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-100">{req.name || 'Anonymous'}</p>
+                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{req.area_name} • ID: {req.user_id}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-bold">{new Date(req.timestamp).toLocaleString()}</span>
+                        </div>
+                        <div className="pl-13">
+                          <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800/50 relative">
+                             <MessageCircle size={14} className="absolute -left-7 top-4 text-slate-600" />
+                             <p className="text-sm text-slate-300 leading-relaxed italic">"{req.message}"</p>
+                          </div>
+                          <div className="mt-4 flex items-center gap-3">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-widest ${
+                              req.status === 'Pending' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
+                            }`}>{req.status}</span>
+                            {req.status === 'Pending' && (
+                              <button 
+                                onClick={() => handleResolveSupport(req._id)}
+                                className="text-[10px] font-bold text-slate-500 hover:text-emerald-500 transition-colors uppercase tracking-widest"
+                              >
+                                Mark as Resolved
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {supportRequests.filter(req => supportTab === 'active' ? req.status === 'Pending' : req.status === 'Resolved').length === 0 && (
+                      <div className="py-20 rounded-2xl border border-slate-800 border-dashed bg-slate-900/20 flex flex-col items-center justify-center text-slate-600">
+                        <HelpCircle size={40} className="mb-4 opacity-20" />
+                        <p className="text-sm font-bold">No {supportTab} help requests from citizens.</p>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}

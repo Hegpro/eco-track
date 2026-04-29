@@ -19,19 +19,56 @@ def calculate_score(area_id):
 def get_area_impact(area_id):
     score = calculate_score(area_id)
     area = db.db.areas.find_one({"area_id": area_id})
+    area_name = area['area_name'] if area else "Community"
     
-    # Mock counts
+    # Real counts
     water_c = db.reports.count_documents({"area_id": area_id, "topic_id": "water_id", "status": "Open"})
     elec_c = db.reports.count_documents({"area_id": area_id, "topic_id": "electricity_id", "status": "Open"})
     waste_c = db.reports.count_documents({"area_id": area_id, "topic_id": "waste_id", "status": "Open"})
     
+    resolved_total = db.reports.count_documents({"area_id": area_id, "status": "Resolved"})
+    
     msg = (
-        f"🏘 *Area: {area['area_name']}*\n\n"
-        f"Score: {score}/100\n\n"
-        f"💧 Water: {water_c} issues\n"
-        f"⚡ Electricity: {elec_c} issues\n"
-        f"🗑 Waste: {waste_c} issues\n\n"
-        f"Trend: ↓ -8 today"
+        f"🏘 *Area: {area_name}*\n\n"
+        f"✨ *Current Score: {score}/100*\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🚨 *Open Issues:*\n"
+        f"💧 Water: {water_c}\n"
+        f"⚡ Electricity: {elec_c}\n"
+        f"🗑 Waste: {waste_c}\n\n"
+        f"✅ *Resolved (All Time):* {resolved_total}\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"💡 Tip: Fix water leaks to gain +10 points!"
+    )
+    return msg
+
+def get_area_trends(area_id):
+    day_ago = datetime.datetime.now() - datetime.timedelta(days=1)
+    new_reports = db.reports.count_documents({
+        "area_id": area_id, 
+        "timestamp": {"$gte": day_ago}
+    })
+    
+    resolved_reports = db.reports.count_documents({
+        "area_id": area_id, 
+        "status": "Resolved",
+        "resolved_at": {"$gte": day_ago}
+    })
+    
+    trend = resolved_reports - new_reports
+    arrow = "📈" if trend > 0 else "📉"
+    status = "Improving" if trend > 0 else "Needs Attention"
+    if trend == 0:
+        arrow = "📊"
+        status = "Stable"
+        
+    msg = (
+        f"📈 *Trend Analysis (Last 24h)*\n\n"
+        f"New Issues reported: {new_reports}\n"
+        f"Issues successfully fixed: {resolved_reports}\n\n"
+        f"Overall Health: {arrow} *{status}*\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"Keep reporting and fixing issues to improve your area's rank!"
     )
     return msg
 

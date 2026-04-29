@@ -156,5 +156,13 @@ class Database:
     def get_nudges(self, dept_id):
         return list(self.nudges.find({"dept_id": dept_id.lower()}).sort("timestamp", -1))
 
+    @safe_execute
+    def add_support_request(self, request_data):
+        return self.db["support_requests"].insert_one(request_data)
+
+    @safe_execute
+    def get_support_requests(self):
+        return list(self.db["support_requests"].find().sort("timestamp", -1))
+
 # Global database instance
 db = Database()

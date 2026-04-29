@@ -8,7 +8,7 @@ from utils.constants import (
     LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
     CONFIRM_REPORT, 
     VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_MORE,
-    SELECT_POST_OFFICE,
+    SELECT_POST_OFFICE, ENTER_HELP_MSG,
     BTN_REPORT, BTN_AREA_SCORE, BTN_MY_IMPACT, BTN_MORE,
     BTN_BACK, BTN_HOME
 )
@@ -19,7 +19,7 @@ from handlers.user import (
     handle_landmark_input, handle_loc_confirmation, 
     handle_manual_location, handle_report_final, 
     view_score_menu, handle_score_menu_click, view_impact_menu, handle_impact_menu_click,
-    view_more_menu, handle_more_menu_click, cancel
+    view_more_menu, handle_more_menu_click, handle_help_message, cancel
 )
 from handlers.admin import admin_menu
 from utils.errors import handle_error
@@ -61,6 +61,7 @@ def main():
                 MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_more_menu_click)
             ],
+            ENTER_HELP_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_help_message)],
         },
         fallbacks=[CommandHandler("cancel", cancel), MessageHandler(filters.Regex(f"^{BTN_BACK}$"), start), MessageHandler(filters.Regex(f"^{BTN_HOME}$"), start)],
         allow_reentry=True,

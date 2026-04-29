@@ -4,19 +4,21 @@ from db.mongo import db
 import datetime
 import requests
 import logging
-from services.impact_service import get_area_impact, get_personal_impact, get_leaderboard, calculate_score
+from services.impact_service import (
+    get_area_impact, get_area_trends, get_personal_impact, get_leaderboard, calculate_score
+)
 from utils.constants import (
     START_REG, IDLE, SELECT_RESOURCE, SELECT_ISSUE_TYPE, 
     LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
     CONFIRM_REPORT, 
     VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_MORE,
-    SELECT_POST_OFFICE,
+    SELECT_POST_OFFICE, ENTER_HELP_MSG,
     BTN_REPORT, BTN_AREA_SCORE, BTN_MY_IMPACT, BTN_MORE,
     BTN_CANCEL, BTN_BACK, BTN_YES, BTN_HOME, RESOURCES, ISSUE_TYPES,
     BTN_LOC_PIN, BTN_LOC_SAVED, BTN_LOC_MANUAL,
     BTN_VIEW_SCORE, BTN_VIEW_TRENDS, BTN_HOW_SCORE,
     BTN_MY_STATS, BTN_MY_RANK, BTN_MY_HISTORY,
-    BTN_NUDGES, BTN_SYNC, BTN_LANG, BTN_STATUS, BTN_HELP
+    BTN_LANG, BTN_STATUS, BTN_HELP
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return START_REG
     return await show_main_menu(update, context)
+
 
 async def handle_area_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -273,9 +276,17 @@ async def handle_score_menu_click(update: Update, context: ContextTypes.DEFAULT_
     if text == BTN_VIEW_SCORE:
         await update.message.reply_text(get_area_impact(user["area_id"]), parse_mode="Markdown")
     elif text == BTN_VIEW_TRENDS:
-        await update.message.reply_text("📈 *Trend Analysis*\n\nYour area score improved by 12% last week!", parse_mode="Markdown")
+        await update.message.reply_text(get_area_trends(user["area_id"]), parse_mode="Markdown")
     elif text == BTN_HOW_SCORE:
-        await update.message.reply_text("📖 *How Scoring Works*\n\n- Resolve Issue: +15 points\n- New Report: -10 points\n- Zero leaks for 24h: +20 bonus", parse_mode="Markdown")
+        msg = (
+            "📖 *How Score is Calculated*\n\n"
+            "Every area starts with a base score of *100* points. Points are deducted for every open issue:\n\n"
+            "💧 *Water Issue:* -10 pts\n"
+            "⚡ *Electricity Issue:* -12 pts\n"
+            "🗑 *Waste Issue:* -5 pts\n\n"
+            "Points are restored as soon as the issue is marked as *Resolved* by the department or community volunteers."
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
     return VIEW_SCORE_MENU
 
 async def view_impact_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -301,7 +312,7 @@ async def handle_impact_menu_click(update: Update, context: ContextTypes.DEFAULT
 
 
 async def view_more_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[BTN_NUDGES, BTN_SYNC], [BTN_LANG, BTN_STATUS], [BTN_HELP], [BTN_BACK]]
+    keyboard = [[BTN_STATUS, BTN_LANG], [BTN_HELP], [BTN_BACK]]
     await update.message.reply_text("⚙️ *More Options*", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True), parse_mode="Markdown")
     return VIEW_MORE
 
@@ -309,13 +320,55 @@ async def handle_more_menu_click(update: Update, context: ContextTypes.DEFAULT_T
     text = update.message.text
     if text == BTN_BACK: return await show_main_menu(update, context)
     
-    if text == BTN_NUDGES:
-        await update.message.reply_text("📢 *Nudge Notifications: ON*", parse_mode="Markdown")
+    if text == BTN_STATUS:
+        user_id = update.effective_user.id
+        # Fetch last 10 reports from this user
+        reports = list(db.db.reports.find({"user_id": user_id}).sort("timestamp", -1).limit(10))
+        
+        if not reports:
+            await update.message.reply_text("🔍 You haven't reported any issues yet.", parse_mode="Markdown")
+        else:
+            msg = "🔍 *Your Recent Reports*\n\n"
+            for r in reports:
+                status_emoji = "⏳" if r["status"] == "Open" else "✅"
+                date_str = r["timestamp"].strftime("%d %b")
+                msg += f"{status_emoji} *{r['issue_type']}*\n   Status: {r['status']} | Date: {date_str}\n   ID: `{r.get('report_id', 'N/A')}`\n\n"
+            await update.message.reply_text(msg, parse_mode="Markdown")
+            
     elif text == BTN_HELP:
-        await update.message.reply_text("❓ *Help Center*\n\nContact support at @EcoTrackSupportBot", parse_mode="Markdown")
+        await update.message.reply_text(
+            "❓ *Help & Feedback*\n\nPlease type your message below. Our team will review it and get back to you.",
+            reply_markup=ReplyKeyboardMarkup([[BTN_BACK]], resize_keyboard=True),
+            parse_mode="Markdown"
+        )
+        return ENTER_HELP_MSG
+    elif text == BTN_LANG:
+        await update.message.reply_text("🌐 *Language Settings*\n\nEnglish is currently selected.", parse_mode="Markdown")
     else:
         await update.message.reply_text(f"Selected: {text}")
     return VIEW_MORE
+
+async def handle_help_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == BTN_BACK: return await view_more_menu(update, context)
+    
+    user = db.get_user(update.effective_user.id)
+    request_data = {
+        "user_id": user["user_id"],
+        "name": user["name"],
+        "area_name": user["area_name"],
+        "message": text,
+        "timestamp": datetime.datetime.now(),
+        "status": "Pending"
+    }
+    
+    db.add_support_request(request_data)
+    
+    await update.message.reply_text(
+        "✅ *Message Sent!*\n\nThank you for your feedback. We will look into it.",
+        parse_mode="Markdown"
+    )
+    return await show_main_menu(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())

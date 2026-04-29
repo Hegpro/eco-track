@@ -173,6 +173,30 @@ async def get_nudges(dept: str):
             n["timestamp"] = n["timestamp"].isoformat()
     return nudges
 
+@app.get("/api/support")
+async def get_support():
+    reqs = db.get_support_requests()
+    for r in reqs:
+        r["_id"] = str(r["_id"])
+        if isinstance(r.get("timestamp"), datetime.datetime):
+            r["timestamp"] = r["timestamp"].isoformat()
+    return reqs
+
+@app.post("/api/support/{req_id}/resolve")
+async def resolve_support(req_id: str):
+    print(f"DEBUG: Resolving support request {req_id}")
+    try:
+        from bson import ObjectId
+        res = db.db["support_requests"].update_one(
+            {"_id": ObjectId(req_id)},
+            {"$set": {"status": "Resolved", "resolved_at": datetime.datetime.now()}}
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Request not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/areas/{area_id}/hotspots")
 async def get_area_hotspots(area_id: str):
     pipeline = [

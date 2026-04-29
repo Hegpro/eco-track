@@ -4,8 +4,8 @@
     LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
     CONFIRM_REPORT, 
     VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_MORE,
-    SELECT_POST_OFFICE
-) = range(14)
+    SELECT_POST_OFFICE, ENTER_HELP_MSG
+) = range(15)
 
 # Main Menu Buttons
 BTN_REPORT = "📊 Report Issue"
@@ -34,8 +34,6 @@ BTN_MY_RANK = "🏅 My Rank"
 BTN_MY_HISTORY = "📈 My History"
 
 # More Menu Buttons
-BTN_NUDGES = "📢 Daily Updates"
-BTN_SYNC = "📴 Offline Sync"
 BTN_LANG = "🌐 Change Language"
 BTN_STATUS = "🔍 Report Status"
 BTN_HELP = "❓ Help"
