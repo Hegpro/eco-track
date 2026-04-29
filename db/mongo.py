@@ -159,14 +159,19 @@ class Database:
     @safe_execute
     def update_area_score(self, area_id, score_delta, area_name=None):
         name = area_name if area_name else area_id
-        return self.areas.update_one(
+        # Ensure area exists with default score
+        self.areas.update_one(
             {"area_id": area_id},
-            {
-                "$inc": {"current_score": score_delta}, 
-                "$setOnInsert": {"current_score": 100, "is_active": True, "area_name": name}
-            },
+            {"$setOnInsert": {"current_score": 100, "is_active": True, "area_name": name}},
             upsert=True
         )
+        # Apply the delta
+        if score_delta != 0:
+            return self.areas.update_one(
+                {"area_id": area_id},
+                {"$inc": {"current_score": score_delta}}
+            )
+        return True
 
     @safe_execute
     def add_nudge(self, nudge_data):

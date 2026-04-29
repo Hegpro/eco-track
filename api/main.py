@@ -20,11 +20,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Eco-Track-Version"] = "1.0.2-EmojiFix"
+    return response
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import traceback
-    print(f"GLOBAL ERROR: {exc}")
-    print(traceback.format_exc())
     return JSONResponse(
         status_code=500,
         content={"message": str(exc), "traceback": traceback.format_exc()},
@@ -81,10 +85,10 @@ async def get_overview():
             "historical_data": historical
         }
     except Exception as e:
-        print(f"Overview error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/reports")
+@app.get("/api/reports/")
 async def get_reports(dept: str = None, status: str = None, delayed: bool = False, search: str = None):
     query = {}
     
@@ -108,6 +112,38 @@ async def get_reports(dept: str = None, status: str = None, delayed: bool = Fals
         if isinstance(r.get("resolved_at"), datetime.datetime):
             r["resolved_at"] = r["resolved_at"].isoformat()
     return reports
+
+@app.post("/api/reports/submit")
+@app.post("/api/reports/submit/")
+@app.get("/api/reports/submit")
+async def create_report(request: Request):
+    if request.method == "GET":
+        return {"status": "Endpoint is reachable"}
+    data = await request.json()
+    try:
+        # Normalize fields for backend compatibility
+        report_data = {
+            "user_id": data.get("user_id"),
+            "topic_id": data.get("res_key") + "_id" if data.get("res_key") else "general_id",
+            "issue_type": data.get("issue_text", "General Issue"),
+            "location": data.get("location"),
+            "pincode": data.get("pincode"),
+            "landmark": data.get("landmark"),
+            "locality": data.get("locality"),
+            "area_id": data.get("locality") or "General",
+            "area_name": data.get("locality") or "General",
+            "status": "Open",
+            "timestamp": datetime.datetime.now(),
+            "impact_value": 200 if data.get("res_key") == "water" else 50
+        }
+        
+        # Add the area if it doesn't exist
+        db.update_area_score(report_data["area_id"], 0, area_name=report_data["area_name"])
+        
+        db.add_report(report_data)
+        return {"status": "success", "report_id": report_data.get("report_id")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/reports/{report_id}/resolve")
 async def resolve_report(report_id: str, request: Request):
