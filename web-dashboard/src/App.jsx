@@ -61,6 +61,7 @@ const App = () => {
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [areas, setAreas] = useState([]);
+  const [hotspots, setHotspots] = useState([]);
   const [selectedAreaId, setSelectedAreaId] = useState(null);
   const [areaStats, setAreaStats] = useState(null);
 
@@ -81,6 +82,7 @@ const App = () => {
       if (deptToFilter) params.append('dept', deptToFilter.toLowerCase());
       if (selectedStatus) params.append('status', selectedStatus);
       if (activeTab === 'delayed') params.append('delayed', 'true');
+      if (searchQuery) params.append('search', searchQuery);
       
       const [overviewRes, reportsRes, areasRes, nudgesRes] = await Promise.all([
         axios.get(`${API_BASE}/overview`),
@@ -97,15 +99,19 @@ const App = () => {
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [selectedDept, selectedStatus, currentUser, selectedAreaId, activeTab]);
+  }, [selectedDept, selectedStatus, currentUser, selectedAreaId, activeTab, searchQuery]);
 
   const fetchAreaStats = useCallback(async () => {
     if (!selectedAreaId) return;
     try {
-      const res = await axios.get(`${API_BASE}/areas/${selectedAreaId}/stats`);
-      setAreaStats(res.data);
+      const [statsRes, hotspotsRes] = await Promise.all([
+        axios.get(`${API_BASE}/areas/${selectedAreaId}/stats`),
+        axios.get(`${API_BASE}/areas/${selectedAreaId}/hotspots`)
+      ]);
+      setAreaStats(statsRes.data);
+      setHotspots(hotspotsRes.data);
     } catch (err) {
-      console.error("Area stats error:", err);
+      console.error("Area details fetch error:", err);
     }
   }, [selectedAreaId]);
 
@@ -672,12 +678,34 @@ const App = () => {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8 flex flex-col items-center justify-center text-center">
-                      <div className="h-32 w-32 rounded-full border-8 border-emerald-500/20 border-t-emerald-500 flex items-center justify-center mb-6">
-                        <span className="text-4xl font-bold">{areaStats?.score || 100}</span>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8">
+                      <div className="flex items-center justify-between mb-8">
+                        <h3 className="font-bold text-lg">Neighborhood Hotspots</h3>
+                        <div className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">
+                          Critical Focus
+                        </div>
                       </div>
-                      <h4 className="text-xl font-bold mb-2">Sustainable Neighborhood</h4>
-                      <p className="text-sm text-slate-400 max-w-xs">This locality is currently in the top 10% for water conservation. Keep it up!</p>
+                      <div className="space-y-6">
+                        {hotspots.map((spot, idx) => (
+                          <div key={idx} className="relative pl-8 before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-slate-800 before:rounded-full">
+                            <div className="absolute left-[-4px] top-0 h-3 w-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
+                            <div className="flex justify-between items-start mb-1">
+                              <p className="text-sm font-bold text-slate-200">{spot.location}</p>
+                              <span className="text-[10px] font-bold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-md">{spot.count} Reports</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Primary Issue:</span>
+                              <span className="text-[10px] text-emerald-500 font-bold">{spot.primary_issue}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {hotspots.length === 0 && (
+                          <div className="py-10 flex flex-col items-center justify-center text-slate-600 border border-slate-800 border-dashed rounded-xl">
+                            <Shield size={32} className="mb-2 opacity-20" />
+                            <p className="text-xs italic">No critical hotspots detected.</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </motion.div>

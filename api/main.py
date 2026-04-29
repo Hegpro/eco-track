@@ -85,10 +85,15 @@ async def get_overview():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/reports")
-async def get_reports(dept: str = None, status: str = None, delayed: bool = False):
+async def get_reports(dept: str = None, status: str = None, delayed: bool = False, search: str = None):
     query = {}
-    if dept: query["topic_id"] = f"{dept}_id"
-    if status: query["status"] = status
+    
+    if search:
+        # Search by report_id (case-insensitive prefix search)
+        query["report_id"] = {"$regex": f"{search}", "$options": "i"}
+    else:
+        if dept: query["topic_id"] = f"{dept}_id"
+        if status: query["status"] = status
     
     if delayed:
         threshold = datetime.datetime.now() - datetime.timedelta(hours=24)
@@ -167,6 +172,27 @@ async def get_nudges(dept: str):
         if isinstance(n.get("timestamp"), datetime.datetime):
             n["timestamp"] = n["timestamp"].isoformat()
     return nudges
+
+@app.get("/api/areas/{area_id}/hotspots")
+async def get_area_hotspots(area_id: str):
+    pipeline = [
+        {"$match": {"area_id": area_id}},
+        {"$group": {
+            "_id": "$location",
+            "count": {"$sum": 1},
+            "issue_types": {"$addToSet": "$issue_type"}
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 3}
+    ]
+    hotspots = list(db.reports.aggregate(pipeline))
+    return [
+        {
+            "location": h["_id"],
+            "count": h["count"],
+            "primary_issue": h["issue_types"][0] if h["issue_types"] else "Multiple"
+        } for h in hotspots
+    ]
 
 if __name__ == "__main__":
     import uvicorn
