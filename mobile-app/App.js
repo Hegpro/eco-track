@@ -11,7 +11,8 @@ import {
   Dimensions,
   SafeAreaView,
   Platform,
-  Animated
+  Animated,
+  BackHandler
 } from 'react-native';
 import { 
   Droplets, 
@@ -81,6 +82,46 @@ export default function App() {
   const [selectedIssueDetail, setSelectedIssueDetail] = useState(null);
   const [localityFilter, setLocalityFilter] = useState('All');
   const [myReports, setMyReports] = useState([]);
+  const [screenStack, setScreenStack] = useState(['home']);
+  
+  const navigate = (newScreen) => {
+    setScreenStack(prev => [...prev, newScreen]);
+    setScreen(newScreen);
+  };
+
+  const goBack = () => {
+    if (selectedIssueDetail) {
+      setSelectedIssueDetail(null);
+      return true;
+    }
+    
+    if (screen === 'report' && reportStep !== 'category') {
+      // Handle steps inside report
+      if (reportStep === 'issue') setReportStep('category');
+      else if (reportStep === 'pincode') setReportStep('issue');
+      else if (reportStep === 'locality') setReportStep('pincode');
+      else if (reportStep === 'landmark') setReportStep('locality');
+      else if (reportStep === 'confirm') setReportStep('landmark');
+      return true;
+    }
+
+    if (screenStack.length > 1) {
+      const newStack = [...screenStack];
+      newStack.pop(); // Remove current
+      const prevScreen = newStack[newStack.length - 1];
+      setScreenStack(newStack);
+      setScreen(prevScreen);
+      return true;
+    }
+    return false; // Exit app
+  };
+
+  useEffect(() => {
+    const backAction = () => goBack();
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [screen, screenStack, reportStep, selectedIssueDetail]);
+
   const [leaderboard, setLeaderboard] = useState([]);
   const [historicalData, setHistoricalData] = useState([]);
   const [currentUser, setCurrentUser] = useState({ id: 12345678, name: 'Eco Citizen', area_id: 'Indiranagar' });
@@ -185,13 +226,20 @@ export default function App() {
   };
 
   const Header = ({ title }) => (
-    <View style={styles.appHeader}>
-      <TouchableOpacity>
-        <Menu color={COLORS.text} size={24} />
+    <View style={styles.modernHeader}>
+      <TouchableOpacity 
+        style={styles.headerActionBtn} 
+        onPress={goBack}
+      >
+        <ChevronLeft color={COLORS.text} size={22} />
       </TouchableOpacity>
-      <Text style={styles.headerTitleText}>{title}</Text>
-      <TouchableOpacity>
-        <Bell color={COLORS.text} size={24} />
+      <View style={styles.headerTitleContainer}>
+        <Text style={styles.modernTitle}>{title}</Text>
+        <View style={styles.headerSubtitleDot} />
+        <Text style={styles.headerSubtitle}>ECO TRACK</Text>
+      </View>
+      <TouchableOpacity style={styles.headerActionBtn}>
+        <Bell color={COLORS.text} size={22} />
       </TouchableOpacity>
     </View>
   );
@@ -216,10 +264,10 @@ export default function App() {
   }, [selectedIssueDetail]);
 
   const renderHistory = () => {
-    const localities = ['All', ...new Set(myReports.map(r => r.locality || r.area_id).filter(Boolean))];
+    const localities = ['All', ...new Set(myReports.map(r => r.area_name || r.locality || r.area_id).filter(Boolean))];
     const filteredReports = localityFilter === 'All' 
       ? myReports 
-      : myReports.filter(r => (r.locality || r.area_id) === localityFilter);
+      : myReports.filter(r => (r.area_name || r.locality || r.area_id) === localityFilter);
 
     return (
       <View style={styles.mainContent}>
@@ -252,7 +300,7 @@ export default function App() {
                 <View style={[styles.statusIndicator, { backgroundColor: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]} />
                 <View style={styles.issueListInfo}>
                   <Text style={styles.issueListType}>{r.issue_type || 'General Issue'}</Text>
-                  <Text style={styles.issueListLoc}>{r.locality || r.area_id}</Text>
+                  <Text style={styles.issueListLoc}>{r.area_name || r.locality || r.area_id}</Text>
                   <Text style={styles.issueListTime}>{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : 'Recent'}</Text>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: r.status === 'Resolved' ? COLORS.primary + '15' : COLORS.danger + '15' }]}>
@@ -264,6 +312,80 @@ export default function App() {
               </TouchableOpacity>
             ))
           )}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderStats = () => {
+    // Aggregate by Department (Topic)
+    const deptStats = {};
+    const locStats = {};
+    
+    myReports.forEach(r => {
+      const dept = r.topic_id?.replace('_id', '').toUpperCase() || 'GENERAL';
+      deptStats[dept] = (deptStats[dept] || 0) + 1;
+      
+      const loc = r.area_name || r.locality || r.area_id || 'Other';
+      locStats[loc] = (locStats[loc] || 0) + 1;
+    });
+
+    const deptData = Object.entries(deptStats).sort((a,b) => b[1] - a[1]);
+    const locData = Object.entries(locStats).sort((a,b) => b[1] - a[1]);
+
+    const renderBarChart = (data, title, icon) => (
+      <View style={styles.statsCard}>
+        <View style={styles.scoreTop}>
+          <Text style={styles.scoreArea}>{title}</Text>
+          {icon && React.createElement(icon, { color: COLORS.primary, size: 20 })}
+        </View>
+        <View style={{ marginTop: 20 }}>
+          {data.slice(0, 5).map(([label, value], i) => {
+            const max = Math.max(...data.map(d => d[1]), 1);
+            const widthPerc = (value / max) * 100;
+            return (
+              <View key={i} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>{label}</Text>
+                  <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: 'bold' }}>{value}</Text>
+                </View>
+                <View style={styles.horizBarBg}>
+                  <View style={[styles.horizBarFill, { width: `${widthPerc}%` }]} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+
+    return (
+      <View style={styles.mainContent}>
+        <Header title="Report Analytics" />
+        <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 100 }}>
+          <View style={styles.statsOverview}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{myReports.length}</Text>
+              <Text style={styles.statLabel}>Total Reports</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{myReports.filter(r => r.status === 'Resolved').length}</Text>
+              <Text style={styles.statLabel}>Resolved</Text>
+            </View>
+          </View>
+          
+          {renderBarChart(deptData, 'By Department', Shield)}
+          {renderBarChart(locData, 'By Hotspot Area', MapPin)}
+          
+          <View style={[styles.statsCard, { marginBottom: 40 }]}>
+            <Text style={styles.scoreArea}>Resolution Rate</Text>
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Text style={{ color: COLORS.text, fontSize: 32, fontWeight: 'bold' }}>
+                {myReports.length > 0 ? Math.round((myReports.filter(r => r.status === 'Resolved').length / myReports.length) * 100) : 0}%
+              </Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>Overall Completion</Text>
+            </View>
+          </View>
         </ScrollView>
       </View>
     );
@@ -348,16 +470,16 @@ export default function App() {
 
   const BottomNav = () => (
     <View style={styles.bottomNav}>
-      <TouchableOpacity style={styles.navItem} onPress={() => setScreen('home')}>
+      <TouchableOpacity style={styles.navItem} onPress={() => navigate('home')}>
         <Home color={screen === 'home' ? COLORS.primary : COLORS.textSecondary} size={24} />
         <Text style={[styles.navText, screen === 'home' && { color: COLORS.primary }]}>Home</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.navItem} onPress={() => setScreen('report')}>
+      <TouchableOpacity style={styles.navItem} onPress={() => navigate('report')}>
         <View style={styles.reportFab}>
           <Plus color="#fff" size={28} />
         </View>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.navItem} onPress={() => setScreen('history')}>
+      <TouchableOpacity style={styles.navItem} onPress={() => navigate('history')}>
         <History color={screen === 'history' ? COLORS.primary : COLORS.textSecondary} size={24} />
         <Text style={[styles.navText, screen === 'history' && { color: COLORS.primary }]}>Reports</Text>
       </TouchableOpacity>
@@ -399,8 +521,9 @@ export default function App() {
           {[
             { label: '📊 Report Issue', screen: 'report', icon: AlertCircle, color: COLORS.danger },
             { label: '📋 All Reports', screen: 'history', icon: History, color: COLORS.accent },
+            { label: '📈 See Stats', screen: 'stats', icon: BarChart3, color: COLORS.primary },
           ].map((item, idx) => (
-            <TouchableOpacity key={idx} style={styles.menuItem} onPress={() => setScreen(item.screen)}>
+            <TouchableOpacity key={idx} style={styles.menuItem} onPress={() => navigate(item.screen)}>
               <View style={[styles.menuIconBox, { backgroundColor: item.color + '15' }]}>
                 <item.icon color={item.color} size={24} />
               </View>
@@ -625,6 +748,7 @@ export default function App() {
       {screen === 'report' && renderReport()}
       {screen === 'success' && renderSuccess()}
       {screen === 'history' && renderHistory()}
+      {screen === 'stats' && renderStats()}
       
       {selectedIssueDetail && renderIssueDetail()}
       
@@ -646,20 +770,49 @@ const styles = StyleSheet.create({
     padding: 20,
     flex: 1,
   },
-  appHeader: {
-    height: 60,
+  modernHeader: {
+    height: 80,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    backgroundColor: COLORS.header,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.cardBorder,
   },
-  headerTitleText: {
+  headerActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  headerTitleContainer: {
+    alignItems: 'center',
+  },
+  modernTitle: {
     color: COLORS.text,
     fontSize: 18,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  headerSubtitleDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+    marginTop: 4,
+    display: 'none', // just for spacing logic if needed
   },
   heroSection: {
     marginVertical: 20,
@@ -1129,5 +1282,29 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: 16,
     alignItems: 'center',
+  },
+  statsCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  horizBarBg: {
+    height: 8,
+    backgroundColor: COLORS.background,
+    borderRadius: 4,
+    width: '100%',
+  },
+  horizBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 4,
+  },
+  statsOverview: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
   }
 });
