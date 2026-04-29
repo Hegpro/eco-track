@@ -62,6 +62,15 @@ class Database:
 
     @safe_execute
     def add_report(self, report_data):
+        if "report_id" not in report_data:
+            import random
+            import string
+            import datetime
+            # Generate human-readable unique ID: ET-[MONTH][RANDOM]
+            # e.g., ET-04A1Z
+            month = datetime.datetime.now().strftime("%m")
+            suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+            report_data["report_id"] = f"ET-{month}{suffix}"
         return self.reports.insert_one(report_data)
 
     @safe_execute
@@ -109,6 +118,14 @@ class Database:
             {"$inc": {"current_score": score_delta}, "$setOnInsert": {"current_score": 100}},
             upsert=True
         )
+
+    @safe_execute
+    def add_nudge(self, nudge_data):
+        return self.nudges.insert_one(nudge_data)
+
+    @safe_execute
+    def get_nudges(self, dept_id):
+        return list(self.nudges.find({"dept_id": dept_id.lower()}).sort("timestamp", -1))
 
 # Global database instance
 db = Database()

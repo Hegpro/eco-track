@@ -52,18 +52,26 @@ async def get_overview():
             resolved = db.reports.count_documents({"topic_id": topic_id, "status": "Resolved"})
             return round((resolved / total * 100), 1) if total > 0 else 0
 
+        threshold = now - datetime.timedelta(hours=24)
+
         return {
             "stats": {
                 "users": db.users.count_documents({}),
                 "total_reports": db.reports.count_documents({}),
                 "pending": db.reports.count_documents({"status": "Open"}),
                 "resolved": db.reports.count_documents({"status": "Resolved"}),
+                "delayed": db.reports.count_documents({"status": "Open", "timestamp": {"$lt": threshold}}),
                 "eco_score": 84,
             },
             "dept_pending": {
                 "electrical": db.reports.count_documents({"topic_id": "electricity_id", "status": "Open"}),
                 "water": db.reports.count_documents({"topic_id": "water_id", "status": "Open"}),
                 "sewage": db.reports.count_documents({"topic_id": "sewage_id", "status": "Open"}),
+            },
+            "dept_delayed": {
+                "electrical": db.reports.count_documents({"topic_id": "electricity_id", "status": "Open", "timestamp": {"$lt": threshold}}),
+                "water": db.reports.count_documents({"topic_id": "water_id", "status": "Open", "timestamp": {"$lt": threshold}}),
+                "sewage": db.reports.count_documents({"topic_id": "sewage_id", "status": "Open", "timestamp": {"$lt": threshold}}),
             },
             "efficiency": {
                 "electrical": get_eff("electricity_id"),
@@ -77,16 +85,23 @@ async def get_overview():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/reports")
-async def get_reports(dept: str = None, status: str = None):
+async def get_reports(dept: str = None, status: str = None, delayed: bool = False):
     query = {}
     if dept: query["topic_id"] = f"{dept}_id"
     if status: query["status"] = status
+    
+    if delayed:
+        threshold = datetime.datetime.now() - datetime.timedelta(hours=24)
+        query["status"] = "Open"
+        query["timestamp"] = {"$lt": threshold}
     
     reports = list(db.reports.find(query).sort("timestamp", -1).limit(50))
     for r in reports:
         r["_id"] = str(r["_id"])
         if isinstance(r.get("timestamp"), datetime.datetime):
             r["timestamp"] = r["timestamp"].isoformat()
+        if isinstance(r.get("resolved_at"), datetime.datetime):
+            r["resolved_at"] = r["resolved_at"].isoformat()
     return reports
 
 @app.post("/api/reports/{report_id}/resolve")
@@ -136,6 +151,22 @@ async def get_area_stats(area_id: str):
         "resolved": resolved,
         "impact": resolved * 200
     }
+
+@app.post("/api/nudges")
+async def create_nudge(request: Request):
+    data = await request.json()
+    data["timestamp"] = datetime.datetime.now()
+    db.add_nudge(data)
+    return {"status": "success"}
+
+@app.get("/api/nudges")
+async def get_nudges(dept: str):
+    nudges = db.get_nudges(dept)
+    for n in nudges:
+        n["_id"] = str(n["_id"])
+        if isinstance(n.get("timestamp"), datetime.datetime):
+            n["timestamp"] = n["timestamp"].isoformat()
+    return nudges
 
 if __name__ == "__main__":
     import uvicorn

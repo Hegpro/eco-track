@@ -207,7 +207,7 @@ async def initiate_resolve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(update.effective_user.id)
     reports = list(db.reports.find({"area_id": user["area_id"], "status": "Open"}).limit(5))
     if not reports: return await show_main_menu(update, context)
-    keyboard = [[f"#{str(r['_id'])[-3:]} {r['issue_type']} - {r['location']}"] for r in reports]
+    keyboard = [[f"#{r['report_id']} {r['issue_type']} - {r['location']}"] for r in reports]
     keyboard.append([BTN_BACK])
     await update.message.reply_text("Select Issue to Resolve:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return SELECT_RESOLVE_ISSUE
@@ -215,8 +215,8 @@ async def initiate_resolve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_resolve_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == BTN_BACK: return await show_main_menu(update, context)
-    short_id = text.split(" ")[0][1:]
-    report = db.db.reports.find_one({"status": "Open", "_id": {"$regex": short_id + "$"}})
+    report_id = text.split(" ")[0][1:]
+    report = db.db.reports.find_one({"status": "Open", "report_id": report_id})
     if not report: return SELECT_RESOLVE_ISSUE
     context.user_data["resolve_id"] = report["_id"]
     await update.message.reply_text(f"Confirm Resolution: {text}?", reply_markup=ReplyKeyboardMarkup([["✅ Mark Resolved", BTN_CANCEL], [BTN_BACK]], resize_keyboard=True))

@@ -33,8 +33,8 @@ def seed_rich_data():
         issue = random.choice(cat["issues"])
         loc = random.choice(localities)
         
-        # Time within last 24 hours
-        time_diff = random.randint(0, 1440)
+        # Time within last 72 hours (to test delayed issues > 24h)
+        time_diff = random.randint(0, 4320)
         timestamp = datetime.datetime.now() - datetime.timedelta(minutes=time_diff)
         
         report = {
@@ -53,7 +53,7 @@ def seed_rich_data():
             report["resolved_at"] = timestamp + datetime.timedelta(minutes=random.randint(30, 240))
             report["resolved_by"] = "System Admin"
 
-        db.db.reports.insert_one(report)
+        db.add_report(report)
 
     print(f"[Seed] Successfully added 20 diverse incidents to the feed.")
 
