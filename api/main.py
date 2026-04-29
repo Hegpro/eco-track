@@ -61,6 +61,27 @@ async def get_reports(dept: str = None, status: str = None):
             r["timestamp"] = r["timestamp"].isoformat()
     return reports
 
+@app.post("/api/reports/{report_id}/resolve")
+async def resolve_report(report_id: str, request: Request):
+    data = await request.json()
+    staff_id = data.get("staff_id", "admin")
+    
+    try:
+        from bson import ObjectId
+        res = db.db.reports.update_one(
+            {"_id": ObjectId(report_id)},
+            {"$set": {
+                "status": "Resolved",
+                "resolved_at": datetime.datetime.now(),
+                "resolved_by": staff_id
+            }}
+        )
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/areas")
 async def get_areas():
     areas = list(db.areas.find())

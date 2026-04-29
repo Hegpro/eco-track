@@ -83,11 +83,29 @@ const App = () => {
     }
   }, [selectedDept, selectedStatus, currentUser]);
 
+  const handleResolve = async (reportId) => {
+    try {
+      await axios.post(`${API_BASE}/reports/${reportId}/resolve`, {
+        staff_id: currentUser.id
+      });
+      fetchData();
+    } catch (err) {
+      console.error("Resolve error:", err);
+      alert("Failed to resolve report. Please try again.");
+    }
+  };
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleIdentityChange = (newIdentity) => {
+    console.log("Switching identity to:", newIdentity.name);
+    setCurrentUser(newIdentity);
+    setShowRolePicker(false);
+  };
 
   const SidebarItem = ({ id, icon: Icon, label }) => (
     <button 
@@ -112,46 +130,60 @@ const App = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+            onClick={() => setShowRolePicker(false)}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl relative"
             >
               <h2 className="text-2xl font-bold mb-2">Switch Identity</h2>
               <p className="text-slate-400 text-sm mb-8">Select a coordinator or return to admin view.</p>
               
               <div className="space-y-3">
-                <button 
-                  onClick={() => { setCurrentUser({ id: 'admin', name: 'Global Admin', role: 'admin', dept: null }); setShowRolePicker(false); }}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/50 transition-all group"
+                <div 
+                  onClick={() => handleIdentityChange({ id: 'admin', name: 'Global Admin', role: 'admin', dept: null })}
+                  className={`w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all group ${
+                    currentUser.id === 'admin' 
+                      ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                      : 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/50'
+                  }`}
                 >
-                  <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
+                    currentUser.id === 'admin' ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-500'
+                  }`}>
                     <ShieldCheck size={20} />
                   </div>
                   <div className="text-left">
                     <p className="font-bold">Global Admin</p>
                     <p className="text-xs text-slate-500">Full Access (All Categories)</p>
                   </div>
-                  <ChevronRight size={16} className="ml-auto text-slate-600" />
-                </button>
+                  <ChevronRight size={16} className={`ml-auto transition-colors ${currentUser.id === 'admin' ? 'text-emerald-500' : 'text-slate-600'}`} />
+                </div>
 
                 {STAFF_LIST.map((staff) => (
-                  <button 
+                  <div 
                     key={staff.id}
-                    onClick={() => { setCurrentUser({ ...staff, role: 'coordinator' }); setShowRolePicker(false); }}
-                    className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 hover:border-emerald-500/50 transition-all group"
+                    onClick={() => handleIdentityChange({ ...staff, role: 'coordinator' })}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all group ${
+                      currentUser.id === staff.id 
+                        ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                        : 'border-slate-800 bg-slate-900 hover:bg-slate-800 hover:border-emerald-500/50'
+                    }`}
                   >
-                    <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform">
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
+                      currentUser.id === staff.id ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}>
                       <staff.icon size={20} />
                     </div>
                     <div className="text-left">
                       <p className="font-bold">{staff.name}</p>
                       <p className="text-xs text-slate-500">{staff.dept} Department</p>
                     </div>
-                    <ChevronRight size={16} className="ml-auto text-slate-600" />
-                  </button>
+                    <ChevronRight size={16} className={`ml-auto transition-colors ${currentUser.id === staff.id ? 'text-emerald-500' : 'text-slate-600'}`} />
+                  </div>
                 ))}
               </div>
 
@@ -262,7 +294,10 @@ const App = () => {
                           : `Specialized monitoring for the ${currentUser.dept} department.`}
                       </p>
                     </div>
-                    <button className="bg-slate-50 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-lg">
+                    <button 
+                      onClick={() => window.print()}
+                      className="bg-slate-50 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-lg"
+                    >
                       Generate PDF
                     </button>
                   </div>
@@ -390,7 +425,7 @@ const App = () => {
                           r.issue_type.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           r.location.toLowerCase().includes(searchQuery.toLowerCase())
                         ).map((report) => (
-                          <ReportCard key={report._id} report={report} />
+                          <ReportCard key={report._id} report={report} onResolve={() => handleResolve(report._id)} />
                         ))
                       ) : (
                         <div className="col-span-full py-20 rounded-2xl border border-slate-800 border-dashed bg-slate-900/20 flex flex-col items-center justify-center text-slate-600">
@@ -419,8 +454,74 @@ const App = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {reports.map((report) => (
-                      <ReportCard key={report._id} report={report} />
+                      <ReportCard key={report._id} report={report} onResolve={() => handleResolve(report._id)} />
                     ))}
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'analytics' && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="space-y-8"
+                >
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold tracking-tight">Resource Analytics</h2>
+                      <p className="text-slate-400">Deep-dive into city-wide consumption and response metrics.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-8 shadow-sm">
+                      <h3 className="font-bold text-lg mb-8">Resource Consumption Over Time</h3>
+                      <div className="h-[400px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={chartData}>
+                            <defs>
+                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                            <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '12px' }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-sm">
+                        <h3 className="font-bold text-sm text-slate-400 uppercase tracking-widest mb-6">Efficiency metrics</h3>
+                        <div className="space-y-6">
+                          <EfficiencyMetric label="Avg. Response Time" value="12m" target="15m" percent={80} />
+                          <EfficiencyMetric label="Resolution Rate" value="94%" target="90%" percent={94} />
+                          <EfficiencyMetric label="Citizen Satisfaction" value="4.8/5" target="4.5/5" percent={96} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-800 bg-emerald-500/5 p-6 shadow-sm border-dashed">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                            <TrendingUp size={20} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">Performance Peak</p>
+                            <p className="text-xs text-slate-500">Highest efficiency recorded today</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Your department has surpassed the weekly resolution target by <span className="text-emerald-500 font-bold">14%</span>. Maintain this pace to unlock community rewards.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -481,12 +582,38 @@ const DeptProgress = ({ label, value, total, icon: Icon, active }) => {
   );
 };
 
-const ReportCard = ({ report }) => (
+const EfficiencyMetric = ({ label, value, target, percent }) => (
+  <div className="space-y-3">
+    <div className="flex justify-between items-end">
+      <div>
+        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-1">{label}</p>
+        <p className="text-xl font-bold">{value}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Target</p>
+        <p className="text-xs font-bold text-slate-400">{target}</p>
+      </div>
+    </div>
+    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+      <motion.div 
+        initial={{ width: 0 }}
+        animate={{ width: `${percent}%` }}
+        className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+      />
+    </div>
+  </div>
+);
+
+const ReportCard = ({ report, onResolve }) => (
   <motion.div 
     layout
     initial={{ opacity: 0, scale: 0.98 }}
     animate={{ opacity: 1, scale: 1 }}
-    className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-sm hover:shadow-emerald-500/5 hover:border-slate-700 transition-all group"
+    className={`rounded-2xl border p-6 shadow-sm transition-all group ${
+      report.status === 'Resolved' 
+        ? 'border-slate-800 bg-slate-900/20 opacity-60' 
+        : 'border-slate-800 bg-slate-900/40 hover:shadow-emerald-500/5 hover:border-slate-700'
+    }`}
   >
     <div className="flex justify-between items-start mb-6">
       <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-[10px] font-bold tracking-widest uppercase">
@@ -498,23 +625,32 @@ const ReportCard = ({ report }) => (
     </div>
     
     <div className="space-y-1 mb-8">
-      <h4 className="font-bold text-lg text-slate-100 leading-tight group-hover:text-emerald-500 transition-colors">{report.issue_type}</h4>
-      <p className="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-2">
+      <h4 className={`font-bold text-lg leading-tight transition-colors ${
+        report.status === 'Resolved' ? 'text-slate-500' : 'text-slate-100 group-hover:text-emerald-500'
+      }`}>{report.issue_type}</h4>
+      <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-2">
         <div className="h-1.5 w-1.5 rounded-full bg-slate-700"></div> {report.location}
-      </p>
+      </div>
     </div>
 
     <div className="flex items-center justify-between pt-5 border-t border-slate-800/50">
       <div className="flex items-center gap-2">
         <div className="relative">
-          <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
-          <div className="absolute inset-0 h-2 w-2 rounded-full bg-emerald-500 animate-ping"></div>
+          <div className={`h-2 w-2 rounded-full ${report.status === 'Resolved' ? 'bg-slate-600' : 'bg-emerald-500'}`}></div>
+          {report.status !== 'Resolved' && <div className="absolute inset-0 h-2 w-2 rounded-full bg-emerald-500 animate-ping"></div>}
         </div>
-        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">{report.status}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${
+          report.status === 'Resolved' ? 'text-slate-500' : 'text-emerald-500'
+        }`}>{report.status}</span>
       </div>
-      <button className="text-[10px] font-bold px-4 py-2 rounded-lg bg-slate-800 hover:bg-emerald-500 hover:text-white text-slate-100 transition-all border border-slate-700 hover:border-emerald-500 shadow-lg">
-        PROCESS
-      </button>
+      {report.status !== 'Resolved' && (
+        <button 
+          onClick={onResolve}
+          className="text-[10px] font-bold px-4 py-2 rounded-lg bg-slate-800 hover:bg-emerald-500 hover:text-white text-slate-100 transition-all border border-slate-700 hover:border-emerald-500 shadow-lg"
+        >
+          PROCESS
+        </button>
+      )}
     </div>
   </motion.div>
 );
