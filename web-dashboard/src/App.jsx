@@ -68,6 +68,7 @@ const App = () => {
   const [hotspots, setHotspots] = useState([]);
   const [selectedAreaId, setSelectedAreaId] = useState(null);
   const [areaStats, setAreaStats] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
 
   // Sync selectedDept with current user's department
   useEffect(() => {
@@ -536,7 +537,12 @@ const App = () => {
                           r.issue_type.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           r.location.toLowerCase().includes(searchQuery.toLowerCase())
                         ).map((report) => (
-                          <ReportCard key={report._id} report={report} onResolve={() => handleResolve(report._id)} />
+                          <ReportCard 
+                            key={report._id} 
+                            report={report} 
+                            onResolve={() => handleResolve(report._id)} 
+                            onView={() => setSelectedReport(report)}
+                          />
                         ))
                       ) : (
                         <div className="col-span-full py-20 rounded-2xl border border-slate-800 border-dashed bg-slate-900/20 flex flex-col items-center justify-center text-slate-600">
@@ -565,7 +571,12 @@ const App = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {reports.map((report) => (
-                      <ReportCard key={report._id} report={report} onResolve={() => handleResolve(report._id)} />
+                      <ReportCard 
+                        key={report._id} 
+                        report={report} 
+                        onResolve={() => handleResolve(report._id)} 
+                        onView={() => setSelectedReport(report)}
+                      />
                     ))}
                   </div>
                 </motion.div>
@@ -593,6 +604,7 @@ const App = () => {
                         report={report} 
                         onResolve={() => handleResolve(report._id)} 
                         onNudge={() => handleNudge(report.report_id)}
+                        onView={() => setSelectedReport(report)}
                         canNudge={currentUser.role === 'Head'}
                         forceDelayed 
                       />
@@ -681,7 +693,11 @@ const App = () => {
                       <div className="space-y-4">
                         {reports.filter(r => r.area_id === selectedAreaId).length > 0 ? (
                           reports.filter(r => r.area_id === selectedAreaId).slice(0, 5).map(report => (
-                            <div key={report._id} className="flex items-center justify-between p-4 bg-slate-800/40 rounded-xl border border-slate-800">
+                            <div 
+                              key={report._id} 
+                              onClick={() => setSelectedReport(report)}
+                              className="flex items-center justify-between p-4 bg-slate-800/40 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500/50 transition-all"
+                            >
                               <div className="flex items-center gap-4">
                                 <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
                                 <div>
@@ -878,6 +894,18 @@ const App = () => {
             </AnimatePresence>
           )}
         </div>
+        <AnimatePresence>
+          {selectedReport && (
+            <ReportDetailModal 
+              report={selectedReport} 
+              onClose={() => setSelectedReport(null)} 
+              onResolve={() => {
+                handleResolve(selectedReport._id);
+                setSelectedReport(null);
+              }}
+            />
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
@@ -953,7 +981,133 @@ const EfficiencyMetric = ({ label, value, target, percent }) => (
   </div>
 );
 
-const ReportCard = ({ report, onResolve, onNudge, canNudge, forceDelayed }) => {
+const ReportDetailModal = ({ report, onClose, onResolve }) => {
+  if (!report) return null;
+  const reportedDate = new Date(report.timestamp);
+  const resolvedDate = report.resolved_at ? new Date(report.resolved_at) : null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden"
+      >
+        {/* Background Glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
+        
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="px-3 py-1 rounded-full bg-slate-800 text-emerald-500 border border-emerald-500/20 text-[10px] font-bold uppercase tracking-widest">
+                {report.topic_id?.split('_')[0] || 'GENERAL'}
+              </span>
+              <span className="text-xs font-mono text-slate-500">#{report.report_id}</span>
+            </div>
+            <h2 className="text-3xl font-bold text-slate-100">{report.issue_type}</h2>
+          </div>
+          <button 
+            onClick={onClose}
+            className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
+          >
+            <AlertCircle size={20} className="rotate-45" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+                <Map size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Location Details</p>
+                <p className="text-sm text-slate-200">{report.location}</p>
+                {report.landmark && <p className="text-xs text-slate-500 mt-1">Landmark: {report.landmark}</p>}
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+                <Clock size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Reporting Timeline</p>
+                <p className="text-sm text-slate-200">
+                  Reported on {reportedDate.toLocaleDateString()} at {reportedDate.toLocaleTimeString()}
+                </p>
+                {resolvedDate && (
+                  <p className="text-sm text-emerald-500 mt-1 font-medium">
+                    Resolved on {resolvedDate.toLocaleDateString()} at {resolvedDate.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+                <User size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Reporter</p>
+                <p className="text-sm text-slate-200">User ID: {report.user_id}</p>
+                <p className="text-xs text-slate-500 mt-1">Neighborhood Area: {report.area_id}</p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+                <Shield size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Current Status</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className={`h-2 w-2 rounded-full ${report.status === 'Resolved' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
+                  <span className={`text-sm font-bold uppercase tracking-widest ${report.status === 'Resolved' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {report.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 pt-8 border-t border-slate-800">
+          {report.status !== 'Resolved' ? (
+            <button 
+              onClick={onResolve}
+              className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-500/20 transition-all uppercase tracking-widest text-sm"
+            >
+              Resolve Issue Now
+            </button>
+          ) : (
+            <div className="flex-1 py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl flex items-center justify-center gap-2 uppercase tracking-widest text-sm">
+              <CheckCircle size={18} /> Issue Resolved
+            </div>
+          )}
+          <button 
+            onClick={onClose}
+            className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl transition-all uppercase tracking-widest text-sm"
+          >
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const ReportCard = ({ report, onResolve, onNudge, canNudge, forceDelayed, onView }) => {
   const reportedDate = new Date(report.timestamp);
   const resolvedDate = report.resolved_at ? new Date(report.resolved_at) : null;
   const isDelayed = forceDelayed || (report.status === 'Open' && (new Date() - reportedDate > 24 * 60 * 60 * 1000));
@@ -963,7 +1117,8 @@ const ReportCard = ({ report, onResolve, onNudge, canNudge, forceDelayed }) => {
       layout
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`rounded-2xl border p-6 shadow-sm transition-all group relative overflow-hidden ${
+      onClick={onView}
+      className={`rounded-2xl border p-6 shadow-sm transition-all group relative overflow-hidden cursor-pointer ${
         report.status === 'Resolved' 
           ? 'border-slate-800 bg-slate-900/20 opacity-60' 
           : isDelayed 
@@ -1025,7 +1180,7 @@ const ReportCard = ({ report, onResolve, onNudge, canNudge, forceDelayed }) => {
         <div className="flex items-center gap-2">
           {canNudge && isDelayed && report.status !== 'Resolved' && (
             <button 
-              onClick={onNudge}
+              onClick={(e) => { e.stopPropagation(); onNudge(); }}
               className="text-[10px] font-bold p-2 rounded-lg bg-slate-800 text-rose-400 border border-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all"
               title="Nudge Staff"
             >
@@ -1034,7 +1189,7 @@ const ReportCard = ({ report, onResolve, onNudge, canNudge, forceDelayed }) => {
           )}
           {report.status !== 'Resolved' && (
             <button 
-              onClick={onResolve}
+              onClick={(e) => { e.stopPropagation(); onResolve(); }}
               className={`text-[10px] font-bold px-4 py-2 rounded-lg transition-all border shadow-lg ${
                 isDelayed 
                   ? 'bg-rose-500 text-white border-rose-400 hover:bg-rose-600' 
