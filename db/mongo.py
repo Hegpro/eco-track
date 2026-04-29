@@ -74,6 +74,35 @@ class Database:
         return self.reports.insert_one(report_data)
 
     @safe_execute
+    def add_or_increment_report(self, report_data):
+        import datetime
+        
+        # Search criteria for "same" issue
+        query = {
+            "pincode": report_data.get("pincode"),
+            "locality": report_data.get("locality"),
+            "topic_id": report_data.get("topic_id"),
+            "issue_type": report_data.get("issue_type"),
+            "status": "Open"
+        }
+        
+        existing = self.reports.find_one(query)
+        if existing:
+            # Increment frequency and update timestamp
+            return self.reports.update_one(
+                {"_id": existing["_id"]},
+                {
+                    "$inc": {"frequency": 1},
+                    "$set": {"last_updated": datetime.datetime.now()}
+                }
+            )
+        else:
+            # Add new report with frequency 1
+            report_data["frequency"] = 1
+            report_data["last_updated"] = datetime.datetime.now()
+            return self.add_report(report_data)
+
+    @safe_execute
     def get_open_reports(self, area_id):
         return list(self.reports.find({"area_id": area_id, "status": "Open"}))
 

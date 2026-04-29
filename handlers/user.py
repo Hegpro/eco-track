@@ -1,21 +1,25 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from db.mongo import db
+import datetime
+import requests
+import logging
+from services.impact_service import get_area_impact, get_personal_impact, get_leaderboard, calculate_score
 from utils.constants import (
     START_REG, IDLE, SELECT_RESOURCE, SELECT_ISSUE_TYPE, 
-    LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, SELECT_LOCALITY, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
-    CONFIRM_REPORT, SELECT_RESOLVE_ISSUE, CONFIRM_RESOLVE, 
-    VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_LEADERBOARD_MENU, VIEW_MORE,
-    BTN_REPORT, BTN_RESOLVE, BTN_AREA_SCORE, BTN_MY_IMPACT, BTN_LEADERBOARD, BTN_MORE,
+    LOCATION_MENU, ENTER_PINCODE, ENTER_LANDMARK, CONFIRM_LOC_SAVE, MANUAL_LOCATION,
+    CONFIRM_REPORT, 
+    VIEW_SCORE_MENU, VIEW_IMPACT_MENU, VIEW_MORE,
+    SELECT_POST_OFFICE,
+    BTN_REPORT, BTN_AREA_SCORE, BTN_MY_IMPACT, BTN_MORE,
     BTN_CANCEL, BTN_BACK, BTN_YES, BTN_HOME, RESOURCES, ISSUE_TYPES,
     BTN_LOC_PIN, BTN_LOC_SAVED, BTN_LOC_MANUAL,
     BTN_VIEW_SCORE, BTN_VIEW_TRENDS, BTN_HOW_SCORE,
     BTN_MY_STATS, BTN_MY_RANK, BTN_MY_HISTORY,
-    BTN_TOP_AREAS, BTN_TOP_CONTRIBS, BTN_AREA_COMPARE,
     BTN_NUDGES, BTN_SYNC, BTN_LANG, BTN_STATUS, BTN_HELP
 )
-import datetime
-from services.impact_service import get_area_impact, get_personal_impact, get_leaderboard, calculate_score
+
+logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -44,9 +48,9 @@ async def handle_area_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [BTN_REPORT, BTN_RESOLVE],
+        [BTN_REPORT],
         [BTN_AREA_SCORE, BTN_MY_IMPACT],
-        [BTN_LEADERBOARD, BTN_MORE]
+        [BTN_MORE]
     ]
     await update.message.reply_text("🌿 *Main Menu*", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True), parse_mode="Markdown")
     return IDLE
@@ -101,9 +105,10 @@ async def handle_location_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         return ENTER_PINCODE
     elif choice == BTN_LOC_SAVED:
         user = db.get_user(update.effective_user.id)
-        keyboard = [[f"{user['area_name']} ({user.get('pincode', '560038')})"], [BTN_BACK]]
-        await update.message.reply_text("Use Saved Area:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return SELECT_LOCALITY
+        context.user_data["report"]["locality"] = user["area_name"]
+        context.user_data["report"]["pincode"] = user.get("pincode", "560038")
+        await update.message.reply_text(f"Using Saved Area: {user['area_name']}\n\nEnter a nearby Landmark:", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
+        return ENTER_LANDMARK
     elif choice == BTN_LOC_MANUAL:
         await update.message.reply_text("Enter Block / Lane / Landmark:", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
         return MANUAL_LOCATION
@@ -114,7 +119,54 @@ async def handle_pincode_input(update: Update, context: ContextTypes.DEFAULT_TYP
     if pin == BTN_BACK: return await handle_issue_type_selection(update, context)
     if pin == BTN_CANCEL: return await show_main_menu(update, context)
     
-    context.user_data["report"]["pincode"] = pin
+    # Validate pincode via API
+    try:
+        logger.info(f"Validating pincode: {pin}")
+        headers = {'User-Agent': 'EcoTrack-Bot/1.0'}
+        response = requests.get(f"https://api.postalpincode.in/pincode/{pin}", timeout=10, headers=headers)
+        data = response.json()
+        logger.info(f"API Response for {pin}: {data}")
+        
+        if data[0]["Status"] != "Success":
+            logger.warning(f"Invalid pincode entered: {pin}. API returned Status: {data[0].get('Status')}")
+            await update.message.reply_text(f"❌ Invalid Pincode: {pin}. Please try again.")
+            return ENTER_PINCODE
+        
+        post_offices = data[0]["PostOffice"]
+        context.user_data["post_offices"] = [po["Name"] for po in post_offices]
+        context.user_data["report"]["pincode"] = pin
+        
+        keyboard = [[po] for po in context.user_data["post_offices"]]
+        keyboard.append([BTN_BACK, BTN_CANCEL])
+        await update.message.reply_text(
+            f"✅ Pincode {pin} validated!\n\nPlease select your Area/Post Office:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+        return SELECT_POST_OFFICE
+    except requests.exceptions.Timeout:
+        logger.error(f"Pincode validation timed out for {pin}")
+        await update.message.reply_text("⏳ The verification service is slow. Please try again in a moment.")
+        return ENTER_PINCODE
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Pincode validation connection error for {pin}: {str(e)}")
+        await update.message.reply_text("🔌 Service connectivity issue. Retrying may help.")
+        return ENTER_PINCODE
+    except Exception as e:
+        logger.error(f"Pincode validation failed for {pin}: {str(e)}", exc_info=True)
+        await update.message.reply_text("⚠️ Unexpected error during validation. Please try again.")
+        return ENTER_PINCODE
+
+async def handle_post_office_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    po_name = update.message.text
+    if po_name == BTN_BACK: 
+        await update.message.reply_text("Enter Pincode:", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
+        return ENTER_PINCODE
+    if po_name == BTN_CANCEL: return await show_main_menu(update, context)
+    
+    if po_name not in context.user_data.get("post_offices", []):
+        return SELECT_POST_OFFICE
+    
+    context.user_data["report"]["locality"] = po_name
     await update.message.reply_text(
         "Enter a nearby Landmark (e.g. Near Park, Opp. Gate 1):",
         reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True)
@@ -124,31 +176,28 @@ async def handle_pincode_input(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_landmark_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     landmark = update.message.text
     if landmark == BTN_BACK: 
+        if context.user_data.get("post_offices"):
+            keyboard = [[po] for po in context.user_data["post_offices"]]
+            keyboard.append([BTN_BACK, BTN_CANCEL])
+            await update.message.reply_text("Select Locality:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+            return SELECT_POST_OFFICE
         await update.message.reply_text("Enter Pincode:", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
         return ENTER_PINCODE
     if landmark == BTN_CANCEL: return await show_main_menu(update, context)
     
     context.user_data["report"]["landmark"] = landmark
-    # Mock localities for demo
-    localities = ["Indiranagar", "HAL 2nd Stage", "Domlur", "CV Raman Nagar"]
-    keyboard = [[l] for l in localities]
-    keyboard.append([BTN_BACK, BTN_CANCEL])
-    await update.message.reply_text("Select Locality:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return SELECT_LOCALITY
-
-async def handle_locality_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    locality = update.message.text
-    if locality == BTN_BACK:
-        await update.message.reply_text("Enter Landmark:", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
-        return ENTER_LANDMARK
-    if locality == BTN_CANCEL: return await show_main_menu(update, context)
+    locality = context.user_data["report"].get("locality")
     
-    context.user_data["report"]["locality"] = locality
-    context.user_data["report"]["location"] = f"{locality}, Near {context.user_data['report']['landmark']}"
+    if locality:
+        # If locality was already picked (from API or Saved Area), skip mock selection
+        context.user_data["report"]["location"] = f"{locality}, Near {landmark}"
+        keyboard = [["✅ Confirm", "⬅️ Change"], [BTN_CANCEL]]
+        await update.message.reply_text(f"Confirm Location: {locality}?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+        return CONFIRM_LOC_SAVE
     
-    keyboard = [["✅ Confirm", "⬅️ Change"], [BTN_CANCEL]]
-    await update.message.reply_text(f"Confirm Location: {locality}?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return CONFIRM_LOC_SAVE
+    # Fallback for manual or legacy flows (can be removed if strictly API-only)
+    await update.message.reply_text("Locality not found. Please re-enter pincode or manual location.", reply_markup=ReplyKeyboardMarkup([[BTN_BACK, BTN_CANCEL]], resize_keyboard=True))
+    return LOCATION_MENU
 
 async def handle_loc_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -185,58 +234,29 @@ async def handle_report_final(update: Update, context: ContextTypes.DEFAULT_TYPE
     impact_l = 200 if report_data["res_key"] == "water" else 0
     old_score = calculate_score(user["area_id"])
     
-    db.add_report({
+    # Use the new increment logic
+    report_data.update({
         "user_id": update.effective_user.id, "area_id": user["area_id"],
         "topic_id": report_data["res_key"] + "_id", "issue_type": report_data["issue_text"],
-        "location": report_data["location"], 
-        "pincode": report_data.get("pincode"),
-        "landmark": report_data.get("landmark"),
-        "locality": report_data.get("locality"),
         "status": "Open", "timestamp": datetime.datetime.now(), "impact_value": impact_l
     })
+    
+    res = db.add_or_increment_report(report_data)
+    
+    # Check if it was an increment or a new insert
+    is_increment = hasattr(res, 'modified_count') and res.modified_count > 0
+    
     db.db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"reports_count": 1}})
     new_score = calculate_score(user["area_id"])
     
-    success_msg = f"⚠️ {report_data['issue_text']} Reported\n\n*Impact:*\n~{impact_l}L/day waste\nScore: {old_score} → {new_score}\n\n*Action:* Fix within 24 hrs"
+    if is_increment:
+        success_msg = f"♻️ Issue Frequency Increased!\n\nThis issue has been reported multiple times at this location.\nScore: {old_score} → {new_score}"
+    else:
+        success_msg = f"⚠️ {report_data['issue_text']} Reported\n\n*Impact:*\n~{impact_l}L/day waste\nScore: {old_score} → {new_score}\n\n*Action:* Fix within 24 hrs"
+    
     await update.message.reply_text(success_msg, parse_mode="Markdown")
     return await show_main_menu(update, context)
 
-# --- ✅ RESOLVE ISSUE ---
-
-async def initiate_resolve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = db.get_user(update.effective_user.id)
-    reports = list(db.reports.find({"area_id": user["area_id"], "status": "Open"}).limit(5))
-    if not reports: return await show_main_menu(update, context)
-    keyboard = [[f"#{r['report_id']} {r['issue_type']} - {r['location']}"] for r in reports]
-    keyboard.append([BTN_BACK])
-    await update.message.reply_text("Select Issue to Resolve:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return SELECT_RESOLVE_ISSUE
-
-async def handle_resolve_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == BTN_BACK: return await show_main_menu(update, context)
-    report_id = text.split(" ")[0][1:]
-    report = db.db.reports.find_one({"status": "Open", "report_id": report_id})
-    if not report: return SELECT_RESOLVE_ISSUE
-    context.user_data["resolve_id"] = report["_id"]
-    await update.message.reply_text(f"Confirm Resolution: {text}?", reply_markup=ReplyKeyboardMarkup([["✅ Mark Resolved", BTN_CANCEL], [BTN_BACK]], resize_keyboard=True))
-    return CONFIRM_RESOLVE
-
-async def handle_resolve_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == BTN_CANCEL: return await show_main_menu(update, context)
-    if update.message.text == BTN_BACK: return await initiate_resolve(update, context)
-    
-    user_id = update.effective_user.id
-    report_id = context.user_data["resolve_id"]
-    report = db.db.reports.find_one({"_id": report_id})
-    old_score = calculate_score(db.get_user(user_id)["area_id"])
-    db.resolve_report(report_id, user_id)
-    db.db.users.update_one({"user_id": user_id}, {"$inc": {"resolved_count": 1}})
-    new_score = calculate_score(db.get_user(user_id)["area_id"])
-    
-    impact_text = f"💧 Water Saved: ~{report.get('impact_value', 0)}L/day" if "water" in report["topic_id"] else "🗑 Waste Reduced"
-    await update.message.reply_text(f"✔ *Issue Resolved*\n\n{impact_text}\nScore: {old_score} → {new_score}\n\n👏 Good job!", parse_mode="Markdown")
-    return await show_main_menu(update, context)
 
 # --- 🌿 SUB-MENUS ---
 
@@ -278,22 +298,7 @@ async def handle_impact_menu_click(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(msg, parse_mode="Markdown")
     return VIEW_IMPACT_MENU
 
-async def view_leaderboard_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[BTN_TOP_AREAS, BTN_TOP_CONTRIBS], [BTN_AREA_COMPARE], [BTN_BACK]]
-    await update.message.reply_text("🏆 *Leaderboard Menu*", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True), parse_mode="Markdown")
-    return VIEW_LEADERBOARD_MENU
 
-async def handle_leaderboard_menu_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == BTN_BACK: return await show_main_menu(update, context)
-    
-    if text == BTN_TOP_AREAS:
-        await update.message.reply_text(get_leaderboard(), parse_mode="Markdown")
-    elif text == BTN_TOP_CONTRIBS:
-        await update.message.reply_text("👤 *Top Contributors*\n\n1. John Doe (15 fixed)\n2. Sarah Smith (12 fixed)", parse_mode="Markdown")
-    elif text == BTN_AREA_COMPARE:
-        await update.message.reply_text("📊 *Area Comparison*\n\nIndiranagar is 15% more efficient than Koramangala this month!", parse_mode="Markdown")
-    return VIEW_LEADERBOARD_MENU
 
 async def view_more_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[BTN_NUDGES, BTN_SYNC], [BTN_LANG, BTN_STATUS], [BTN_HELP], [BTN_BACK]]
