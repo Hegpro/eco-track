@@ -79,6 +79,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [selectedIssueDetail, setSelectedIssueDetail] = useState(null);
+  const [localityFilter, setLocalityFilter] = useState('All');
   const [myReports, setMyReports] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [historicalData, setHistoricalData] = useState([]);
@@ -214,36 +215,59 @@ export default function App() {
     }
   }, [selectedIssueDetail]);
 
-  const renderHistory = () => (
-    <View style={styles.mainContent}>
-      <Header title="All Reports" />
-      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 100 }}>
-        {myReports.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Clock color={COLORS.textSecondary} size={48} />
-            <Text style={styles.emptyText}>No reports found.</Text>
-          </View>
-        ) : (
-          myReports.map((r, i) => (
-            <TouchableOpacity key={i} style={styles.issueListItem} onPress={() => setSelectedIssueDetail(r)}>
-              <View style={[styles.statusIndicator, { backgroundColor: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]} />
-              <View style={styles.issueListInfo}>
-                <Text style={styles.issueListType}>{r.issue_type || 'General Issue'}</Text>
-                <Text style={styles.issueListLoc}>{r.locality || r.area_id}</Text>
-                <Text style={styles.issueListTime}>{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : 'Recent'}</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: r.status === 'Resolved' ? COLORS.primary + '15' : COLORS.danger + '15' }]}>
-                <Text style={[styles.statusBadgeText, { color: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]}>
-                  {r.status}
-                </Text>
-              </View>
-              <ChevronRight color={COLORS.cardBorder} size={20} />
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
-    </View>
-  );
+  const renderHistory = () => {
+    const localities = ['All', ...new Set(myReports.map(r => r.locality || r.area_id).filter(Boolean))];
+    const filteredReports = localityFilter === 'All' 
+      ? myReports 
+      : myReports.filter(r => (r.locality || r.area_id) === localityFilter);
+
+    return (
+      <View style={styles.mainContent}>
+        <Header title="All Reports" />
+        
+        {/* Locality Filter Bar */}
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {localities.map(loc => (
+              <TouchableOpacity 
+                key={loc} 
+                style={[styles.filterChip, localityFilter === loc && styles.activeFilterChip]}
+                onPress={() => setLocalityFilter(loc)}
+              >
+                <Text style={[styles.filterText, localityFilter === loc && styles.activeFilterText]}>{loc}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 100 }}>
+          {filteredReports.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Clock color={COLORS.textSecondary} size={48} />
+              <Text style={styles.emptyText}>No reports found in {localityFilter}.</Text>
+            </View>
+          ) : (
+            filteredReports.map((r, i) => (
+              <TouchableOpacity key={i} style={styles.issueListItem} onPress={() => setSelectedIssueDetail(r)}>
+                <View style={[styles.statusIndicator, { backgroundColor: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]} />
+                <View style={styles.issueListInfo}>
+                  <Text style={styles.issueListType}>{r.issue_type || 'General Issue'}</Text>
+                  <Text style={styles.issueListLoc}>{r.locality || r.area_id}</Text>
+                  <Text style={styles.issueListTime}>{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : 'Recent'}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: r.status === 'Resolved' ? COLORS.primary + '15' : COLORS.danger + '15' }]}>
+                  <Text style={[styles.statusBadgeText, { color: r.status === 'Resolved' ? COLORS.primary : COLORS.danger }]}>
+                    {r.status}
+                  </Text>
+                </View>
+                <ChevronRight color={COLORS.cardBorder} size={20} />
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const renderIssueDetail = () => (
     <View style={styles.detailOverlay}>
@@ -275,6 +299,13 @@ export default function App() {
                   {selectedIssueDetail.status}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Report ID</Text>
+              <Text style={[styles.detailValue, { color: COLORS.primary, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }]}>
+                {selectedIssueDetail.report_id || 'ET-NEW'}
+              </Text>
             </View>
 
             <View style={styles.detailItem}>
@@ -890,6 +921,41 @@ const styles = StyleSheet.create({
   summaryLabel: {
     color: COLORS.textSecondary,
     fontSize: 14,
+  },
+  impactBadgeText: {
+    color: COLORS.primary,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  filterContainer: {
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.cardBorder,
+    paddingVertical: 12,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  activeFilterChip: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  activeFilterText: {
+    color: '#fff',
   },
   summaryValue: {
     color: COLORS.text,
