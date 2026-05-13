@@ -2,17 +2,29 @@ from pymongo import MongoClient
 import config
 from utils.errors import DatabaseError
 import logging
+import certifi
 
 logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self):
         try:
-            self.client = MongoClient(
-                config.MONGO_URI, 
-                serverSelectionTimeoutMS=5000, 
-                tlsAllowInvalidCertificates=True
-            )
+            # Mask URI for logging
+            masked_uri = config.MONGO_URI.split('@')[-1] if '@' in config.MONGO_URI else config.MONGO_URI
+            print(f"DEBUG: Connecting to MongoDB: ...@{masked_uri}")
+            
+            # Connection options
+            kwargs = {
+                "serverSelectionTimeoutMS": 5000
+            }
+            
+            # Use SSL/TLS only for Atlas or if explicitly requested
+            if "mongodb+srv" in config.MONGO_URI or "ssl=true" in config.MONGO_URI.lower() or "tls=true" in config.MONGO_URI.lower():
+                kwargs["tlsCAFile"] = certifi.where()
+                kwargs["tls"] = True
+                print("DEBUG: Using SSL/TLS for connection")
+            
+            self.client = MongoClient(config.MONGO_URI, **kwargs)
             self.db = self.client[config.DB_NAME]
             # Collections
             self.users = self.db["users"]
