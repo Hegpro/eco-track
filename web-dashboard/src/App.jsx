@@ -38,7 +38,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = 'https://eco-track-c7zf.onrender.com/api';
 
 // Staff Data with Multi-tier Roles
 const STAFF_LIST = [

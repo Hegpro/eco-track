@@ -54,7 +54,7 @@ const COLORS = {
 };
 
 // IMPORTANT: Replace with your actual local IP address from ipconfig
-const API_BASE = 'http://10.139.120.149:8000/api';
+const API_BASE = 'https://eco-track-c7zf.onrender.com/api';
 
 const RESOURCES = [
   { key: 'water', label: '💧 Water', icon: Droplets, color: '#3b82f6' },
